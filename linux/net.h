@@ -20,7 +20,7 @@ int xsocket(int family, int ty, int protocol)
 // XXX use linux poll?
 struct pollfd { int fd; short events, revents; };
 enum { POLLIN = 1, POLLOUT = 2, POLLNVAL = 4 };  
-int poll(struct pollfd *pfd, uint n, int msec)
+int xpoll(struct pollfd *pfd, uint n, int msec)
 {
   struct pollfd *p, *pn = &pfd[n];
   int f, r;
@@ -100,3 +100,4 @@ int xconnect(int d, void *a, int n)
 #define listen   xlisten
 #define accept   xaccept
 #define connect  xconnect
+#define poll     xpoll
