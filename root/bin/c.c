@@ -181,7 +181,7 @@ void *new(int size)
   return (void *)(((int)p + 7) & -8);
 }
 
-err(char *msg)
+void err(char *msg)
 {
   dprintf(2,"%s : [%s:%d] error: %s\n", cmd, file, line, msg); // XXX need errs to power past tokens (validate for each err case.)
   if (++errs > 10) { dprintf(2,"%s : fatal: maximum errors exceeded\n", cmd); exit(-1); }
@@ -199,22 +199,22 @@ char *mapfile(char *name, int size) // XXX replace with mmap
 }
 
 // instruction emitter
-em(int i)
+void em(int i)
 {
   if (debug) printf("%08x  %08x%6.4s\n", ip-ts, i, &ops[i*5]);
   *(int *)ip = i;
   ip += 4;
 }
-emi(int i, int c)
+void emi(int i, int c)
 {
   if (debug) printf("%08x  %08x%6.4s  %d\n", ip-ts, i | (c << 8), &ops[i*5], c);
   if (c<<8>>8 != c) err("emi() constant out of bounds"); 
   *(int *)ip = i | (c << 8);
   ip += 4;
 }
-emj(int i, int c) { emi(i, c - ip - 4); } // jump
-eml(int i, int c) { emi(i, c - loc); } // local
-emg(int i, int c) { if (c < BSS_TAG) *pdata++ = ip; else { *pbss++ = ip; c -= BSS_TAG; } emi(i, c); } // global
+void emj(int i, int c) { emi(i, c - ip - 4); } // jump
+void eml(int i, int c) { emi(i, c - loc); } // local
+void emg(int i, int c) { if (c < BSS_TAG) *pdata++ = ip; else { *pbss++ = ip; c -= BSS_TAG; } emi(i, c); } // global
 int emf(int i, int c) // forward
 {
   if (debug) printf("%08x  %08x%6.4s  <fwd>\n", ip-ts, i | (c << 8), &ops[i*5]);
@@ -223,7 +223,7 @@ int emf(int i, int c) // forward
   ip += 4;
   return ip - 4 - ts;
 }
-patch(int t, int a)
+void patch(int t, int a)
 {
   int n;
   while (t) {
@@ -234,14 +234,14 @@ patch(int t, int a)
 }
 
 // parser
-dline()
+void dline()
 {
   char *p;
   for (p = pos; *p && *p != '\n' && *p != '\r'; p++);
   printf("%s  %d: %.*s\n", file, line, p - pos, pos);
 }
 
-next()
+void next()
 {
   char *p; int b; ident_t **hm;
   struct stat st;
@@ -464,11 +464,13 @@ frac:     b = 10;
   }
 }
 
-skip(int c)
+void skip(int c)
 {
   if (tk != c) { dprintf(2,"%s : [%s:%d] error: '%c' expected\n", cmd, file, line, c); errs++; }
   next();
 }
+
+void expr(int lev);
 
 int imm() /// XXX move these back down once I validate prototypes working for double immf()
 {
@@ -534,6 +536,8 @@ int talign(uint t)
   default: return 4;
   }
 }
+
+void member(int stype, struct_t *s);
 
 uint basetype()
 {
@@ -700,6 +704,11 @@ uint *type(uint *t, ident_t **v, uint bt)
   return t;
 }
 
+void rv(int *a);
+void stmt();
+void node(int n, int *a, int *b);
+void cast(uint t);
+
 decl(bc)
 {
   int sc, size, align, hglo, *b, *c = 0; uint bt, t; ident_t *v; loc_t *sp;
@@ -846,7 +855,7 @@ decl(bc)
   }
 }
 
-member(int stype, struct_t *s)
+void member(int stype, struct_t *s)
 {
   int size, align, ssize = 0, salign = 1; uint bt, t; ident_t *v; member_t *m, **mp;
 
@@ -883,14 +892,14 @@ member(int stype, struct_t *s)
 }
 
 // expression parsing
-node(int n, int *a, int *b) { *(e-=4) = n; e[1] = (int)a; e[2] = (int)b; }
+void node(int n, int *a, int *b) { *(e-=4) = n; e[1] = (int)a; e[2] = (int)b; }
 nodc(int n, int *a, int *b) // commutative
 {
   *(e-=4) = n;
   if (*a < *b) { e[1] = (int)b; e[2] = (int)a; } else { e[1] = (int)a; e[2] = (int)b; } // put simpler expression in rhs
 }
 
-mul(int *b) // XXX does this handle unsigned correctly?
+void mul(int *b) // XXX does this handle unsigned correctly?
 {
   if (*b == Num) {
     if (*e == Num) { e[2] *= b[2]; return; }
@@ -900,7 +909,7 @@ mul(int *b) // XXX does this handle unsigned correctly?
   nodc(Mul,e,b);
 }
 
-add(uint *b)  // XXX make sure to optimize (a + 9 + 2) -> (a + 11)    and    (a + 9 - 2) -> (a + 7)
+void add(uint *b)  // XXX make sure to optimize (a + 9 + 2) -> (a + 11)    and    (a + 9 - 2) -> (a + 7)
 {
   if (*b == Num) {
     if (*e == Num || *e == Lea || *e == Leag) { e[2] += b[2]; return; } // XXX  <<>> check
@@ -927,7 +936,7 @@ int *flot(int *b, uint t)
   return e;
 }
 
-ind()
+void ind()
 {
   if (ty & PMASK)
     ty -= PTR;
@@ -945,7 +954,7 @@ ind()
   }
 }
 
-addr()
+void addr()
 {
   ty += PTR;
   switch (*e) {
@@ -975,7 +984,7 @@ trim() // trim dead code from expression statements (just the common cases)
   if (*e == Add && *(int *)e[2] == Num) e = (int *)e[1]; // convert x++ into ++x
 }
 
-cast(uint t)
+void cast(uint t)
 {
   if (t == DOUBLE || t == FLOAT) {
     if (ty < UINT)                        
@@ -995,7 +1004,7 @@ cast(uint t)
   }
 }
 
-expr(int lev)
+void expr(int lev)
 {
   int *b, *d, *dd; uint t, tt; member_t *m;
 
@@ -1507,7 +1516,7 @@ int smod(int t)
   }
 }
 
-lbf(int *b)
+void lbf(int *b)
 {
   double d;
   switch (*b) {
@@ -1522,7 +1531,7 @@ lbf(int *b)
   }
 }
 
-opf(int *a)
+void opf(int *a)
 {
   int *b = (int *)a[2];
   switch (*b) {
@@ -1539,7 +1548,7 @@ opf(int *a)
     }
   }
 }
-opaf(int *a, int o, int comm)
+void opaf(int *a, int o, int comm)
 {
   int t, *b = a + 2;
   a = (int *)a[1];
@@ -1572,7 +1581,7 @@ opaf(int *a, int o, int comm)
 
 lbi(int i) { if (i<<8>>8 == i) emi(LBI,i); else { emi(LBI,i>>24); emi(LBHI,i<<8>>8); } }
 
-lb(int *b)
+void lb(int *b)
 {
   switch (*b) {
   case Auto: eml(LBL+lmod(b[1]), b[2]); return;
@@ -1582,7 +1591,7 @@ lb(int *b)
   }
 }
 
-opt(int *a)
+void opt(int *a)
 {
   int *b = (int *)a[2];
   switch (*b) {
@@ -1604,7 +1613,7 @@ enum { OPI = ADDI - ADD, OPL = ADDL - ADD };
 
 opi(int o, int i) { if (i<<8>>8 == i) emi(o+OPI, i); else { emi(LBI,i>>24); emi(LBHI,i<<8>>8); em(o); } }
 
-op(int *a, int o)
+void op(int *a, int o)
 {
   int t, *b = (int *)a[2];
   switch (*b) {
@@ -1622,7 +1631,7 @@ op(int *a, int o)
   }
 }
 
-opa(int *a, int o, int comm)
+void opa(int *a, int o, int comm)
 {
   int t, *b = a + 2;
   a = (int *)a[1];
@@ -1657,6 +1666,8 @@ opa(int *a, int o, int comm)
   default: err("lvalue expected");
   }  
 }
+
+int testnot(int *a, int t);
 
 int test(int *a, int t)
 {
@@ -1708,7 +1719,7 @@ int testnot(int *a, int t)
   }
 }
 
-rv(int *a)
+void rv(int *a)
 {
   int c, t, *b; double d;
   ident_t *n;
@@ -1885,7 +1896,7 @@ rv(int *a)
 }
 
 // statement
-stmt()
+void stmt()
 {
   static int brk, cont, def;
   int a, b, c, d, *es, *et, cmin, cmax;

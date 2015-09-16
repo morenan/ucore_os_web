@@ -158,10 +158,11 @@ int xstat(char *file, struct xstat *s)
 }
 void *xsbrk(int i)
 {
-  void *p; static brk = 0;
+  void *p; static int brk = 0;
   if (!i) return (void *)brk;
   if (i < 0) { printf("sbrk(i<0) not implemented\n"); exit(-1); }
-  if (p = malloc(i)) { memset(p, 0, i); brk += i; return p; } // XXX memset is probably redundant since we never reallocate
+  p = malloc(i);
+  if (p != NULL) { memset(p, 0, i); brk += i; return p; } // XXX memset is probably redundant since we never reallocate
   return (void *)-1;
 }
 int xmkdir(char *path)
