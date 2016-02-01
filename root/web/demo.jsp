@@ -82,7 +82,7 @@
 			function IntToString(i) {
 				return String.fromCharCode((i>>24)&255)
 					+  String.fromCharCode((i>>16)&255)
-					+  String.fromCharCode((i>>8)&255) 
+					+  String.fromCharCode((i>>8)&255)
 					+  String.fromCharCode(i&255);
 			}
 			function LongToString(i) {
@@ -1034,7 +1034,7 @@
 	  			if (etree[e].value == Num && e.rChild == 1) { 
 	  				e = b.addr; return;
 	  			} // XXX reliable???
-	  			nodc(Mul,expr[e],b);
+	  			nodc(Mul,etree[e],b);
 			}
 			function add(b)  // XXX make sure to optimize (a + 9 + 2) -> (a + 11)    and    (a + 9 - 2) -> (a + 7)
 			{
@@ -1048,7 +1048,7 @@
 					if (b.value == Leag) { etree[e].rChild += b.rChild; etree[e].value = Leag; return; }
 					if (etree[e].rChild == null) { e = b.addr; return; } // XXX reliable???
 				}
-	 			nodc(Add,b,expr[e]);
+	 			nodc(Add,b,etree[e]);
 			}
 			function flot(t) { // etree arg[0] 
   				if (t == DOUBLE || t == FLOAT) 
@@ -1111,14 +1111,14 @@
 							ep = etree[e].rChild.addr;
 							etree[ep].rChild.value = toDouble(etree[ep].rChild.value);
 						} else 
-							node(Cid, expr[e-1], null);
+							node(Cid, etree[e-1], null);
 					} else if (ty != DOUBLE && ty != FLOAT) {
 						if (etree[e].value == Num) {
 							etree[e].value = Numf;
 							ep = etree[e].rChild.addr;
 							etree[ep].rChild.value = toDouble(etree[ep].rChild.value);
 						} else 
-							node(Cud, expr[e-1], null);
+							node(Cud, etree[e-1], null);
 					}
 				} else if (t < UINT) {
 					if (ty == DOUBLE || ty == FLOAT) 
@@ -1128,10 +1128,10 @@
 						} else 
 							node(cdi, null, null);
 					switch (t) {
-						case CHAR:   if (etree[e].value == Num) etree[e].rChild = toChar(expr[e-1].rChild);  else unode(Cic); break;
-						case UCHAR:  if (etree[e].value == Num) etree[e].rChild = toUChar(expr[e-1].rChild); else unode(Cuc); break;
-						case SHORT:  if (etree[e].value == Num) etree[e].rChild = toShort(expr[e-1].rChild); else unode(Cis); break;	
-						case USHORT: if (etree[e].value == Num) etree[e].rChild = toUShort(expr[e-1].rChild);else unode(Cus); break;
+						case CHAR:   if (etree[e].value == Num) etree[e].rChild = toChar(etree[e-1].rChild);  else unode(Cic); break;
+						case UCHAR:  if (etree[e].value == Num) etree[e].rChild = toUChar(etree[e-1].rChild); else unode(Cuc); break;
+						case SHORT:  if (etree[e].value == Num) etree[e].rChild = toShort(etree[e-1].rChild); else unode(Cis); break;	
+						case USHORT: if (etree[e].value == Num) etree[e].rChild = toUShort(etree[e-1].rChild);else unode(Cus); break;
 					}
 				} else if (ty == DOUBLE || ty == FLOAT) {
 					if (etree[e].value == Numf) {
@@ -1242,7 +1242,7 @@
 								etree[e].rChild = ~etree[e].rChild;
 							else {
 								node(Num, null, -1);
-								nodc(Xor, expr[e-2], expr[e-1]);
+								nodc(Xor, etree[e-2], etree[e-1]);
 							} 
 							ty = ty < UINT ? INT : UINT;
 						}
@@ -1510,7 +1510,7 @@
       							if (etree[b].value == Num && etree[e].value == Num)
       								etree[e].rChild |= etree[b].rChild;
       							else
-      								nodc(Or, expr[b], etree[e]);
+      								nodc(Or, etree[b], etree[e]);
       							ty = ((tt & UINT) != 0) ? UINT : INT; 
       						}
       						continue;
@@ -1535,7 +1535,7 @@
 		  						if (etree[b].value == Num && etree[e].value == Num)
 		  							etree[e].rChild |= etree[b].rChild;
 		  						else
-		  							nodc(And, expr[b], expr[e-1]);
+		  							nodc(And, etree[b], etree[e-1]);
 		  						ty = ((tt & UINT) != 0) ? UINT : INT;
 		  					}
 		  					continue;
@@ -1595,7 +1595,7 @@
 							next(); expr(Shl);
 							if ((t < FLOAT || (t & PAMASK) != 0) && (ty < FLOAT || (ty & PAMASK) != 0)) { 
 		  						if (etree[b].value == Num && etree[e].value == Num) 
-		  							etree[e].rChild = (etree[b].rChild < expr[e-1].rChild); 
+		  							etree[e].rChild = (etree[b].rChild < etree[e-1].rChild); 
 		  						else 
 		  							nodc(Ltu, etree[b], etree[e]); 
 		  					} else if ((tt=t|ty) >= STRUCT) 
@@ -1691,29 +1691,29 @@
 								if ((tt = tinc(t)) > 1) {
 									node(Num, null, tt);
 									etree[e].value = Num;
-									mul(expr[e-1]);
+									mul(etree[e-1]);
 								}
-								add(expr[b]); ty = t;
+								add(etree[b]); ty = t;
 							} else if ((ty & PAMASK) != 0 && t <= UINT) {
 								if ((tt = tinc(ty)) > 1) {
 									d = e;
 									node(Num, null, tt);
-									mul(expr[b]); add(expr[d]);
+									mul(etree[b]); add(etree[d]);
 								} else
-									add(expr[b]);
+									add(etree[b]);
 							} else if ((tt = t|ty) >= STRUCT)
 								err("bad operands to +");
 							else if ((tt && FLOAT) != 0) {
-								d = flot(expr[e-1], ty);
-								b = flot(expr[b], t);
+								d = flot(etree[e-1], ty);
+								b = flot(etree[b], t);
 								if (etree[b].value == Numf && etree[d].value == Numf) {
 									etree[e].value = Numf;
-									etree[e].rChild = Number(expr[b].rChild) + Number(expr[d].rChild);
+									etree[e].rChild = Number(etree[b].rChild) + Number(etree[d].rChild);
 								} else
-									nodc(Addf, expr[b], expr[d]);
+									nodc(Addf, etree[b], etree[d]);
 								ty = DOUBLE;
 							} else {
-								add(expr[b]);
+								add(etree[b]);
 								ty = (tt & UINT) ? UINT : INT;
 							}
 							continue;
@@ -2213,7 +2213,7 @@
 			}
 			
 			function test(a, t) {
-  				var b = null, a2 = (a.rChild == null ? expr[a.addr-1] : a.rChild);
+  				var b = null, a2 = (a.rChild == null ? etree[a.addr-1] : a.rChild);
 				switch (a.value) {
 					case Eq:  opt(a); return emf(BE,  t);
 			 	 	case Ne:  opt(a); return emf(BNE, t);
@@ -2226,8 +2226,8 @@
 			  		case Ltf: opf(a); return emf(BLTF,t);
 			  		case Gef: opf(a); return emf(BGEF,t);
 			  		case Lor: return test(a2,test(a.lChild, t));
-			  		case Lan: b = testnot(a.lChild,0); t = test(expr[a.addr-1],t); patch(b,ip); return t;
-			  		case Not: return testnot(expr[a.addr-1],t);
+			  		case Lan: b = testnot(a.lChild,0); t = test(etree[a.addr-1],t); patch(b,ip); return t;
+			  		case Not: return testnot(etree[a.addr-1],t);
 			  		case Notf: rv(a2); return emf(BZF, t);
 			  		case Nzf:  rv(a2); return emf(BNZF,t);
 			  		case Num: if (a.rChild != null) return emf(JMP,t); return t;
@@ -2237,7 +2237,7 @@
 			}
 
 			function testnot(a, t) {
-				var b = null;
+				var b = null, a2 = (a.rChild == null ? etree[a.addr-1] : a.rChild);
 				switch (a.value) {
 					case Eq:  opt(a); return emf(BNE, t);
 				  	case Ne:  opt(a); return emf(BE,  t);
@@ -2249,18 +2249,440 @@
 				  	case Nef: opf(a); return emf(BEF, t);
 				  	case Ltf: opf(a); return emf(BGEF,t);
 				  	case Gef: opf(a); return emf(BLTF,t);
-				  	case Lor: b = test(a.lChild,0); t = testnot(expr[a.addr-1],t); patch(b,ip); return t;
-				  	case Lan: return testnot(expr[a.addr-1],testnot(a.lChild,t));
-				  	case Not: return test(expr[a.addr-1],t);
-				  	case Notf: rv(expr[a.addr-1]); return emf(BNZF,t);
-				  	case Nzf: rv(expr[a.addr-1]); return emf(BZF,t);
+				  	case Lor: b = test(a.lChild,0); t = testnot(etree[a.addr-1],t); patch(b,ip); return t;
+				  	case Lan: return testnot(etree[a.addr-1],testnot(a.lChild,t));
+				  	case Not: return test(etree[a.addr-1],t);
+				  	case Notf: rv(a2); return emf(BNZF,t);
+				  	case Nzf: rv(a2); return emf(BZF,t);
 				  	case Num: if (a.rChild == 0) return emf(JMP,t); return t;
 				  	case Numf: if (Number(a.rChild) == 0) return emf(JMP,t); return t;
 				  	default: rv(a); return emf(BZ,t);
 				}
 			}
 			
+			function rv(a) {
+  				var c = 0, t = 0, b = null, a2 = null, d = 0.0;
+  				var n = null ; // ident_t *n;
+  				a2 = (a.rChild == null ? etree[a.addr-1] : a.rChild);
+				switch (a.value) {
+  					case Addaf: opaf(a, ADDF, 1); return;
+  					case Subaf: opaf(a, SUBF, 0); return;
+					case Mulaf: opaf(a, MULF, 1); return;
+					case Divaf: opaf(a, DIVF, 0); return;
+
+					case Adda: opa(a, ADD, 1); return;
+					case Suba: opa(a, SUB, 0); return;
+					case Mula: opa(a, MUL, 1); return;
+					case Diva: opa(a, DIV, 0); return;
+					case Dvua: opa(a, DVU, 0); return;
+					case Moda: opa(a, MOD, 0); return;
+					case Mdua: opa(a, MDU, 0); return;
+					case Anda: opa(a, AND, 1); return;
+					case Ora:  opa(a, OR,  1); return;
+					case Xora: opa(a, XOR, 1); return;
+					case Shla: opa(a, SHL, 0); return;
+					case Shra: opa(a, SHR, 0); return;
+					case Srua: opa(a, SRU, 0); return;
+
+  					case Assign:
+    					b = a.rChild;
+    					a = a.lChild;
+    					switch (a.value) {
+    						case Auto:   rv(b); eml(SL+smod(a.lChild), a2); return; // loc = expr
+    						case Static: rv(b); emg(SG+smod(a.lChild), a2); return; // glo = expr
+    						case Ptr:
+    							a2 = etree[a.addr-1];
+    							a3 = (a2.rChild == null ? etree[a3.addr-1] : a2.rChild);
+      							switch (a2.value) {
+      								case Auto:   rv(b); eml(LBL+lmod(a2.lChild), a3); break; // *loc = expr // XXX all good? in the presense of multiple casts?
+      								case Static: rv(b); emg(LBG+lmod(a2.lChild), a3); break; // *glo = expr
+      								default:
+        								rv(a2);
+        								switch (b.value) {
+        									case Static:
+        									case Auto:
+        									case Num: 
+        									case Numf: em(LBA); rv(b); break; // *expr = simple
+        									default:  loc -= 8; em(PSHA); rv(b); em(POPB); loc += 8; // *expr = expr
+        								}
+      							}
+      							em(SX+smod(a.lChild));
+      							return;
+    						default: err("lvalue expected"); return;
+    					}
+
+					case Addf: opf(a); em(ADDF); return;
+					case Subf: opf(a); em(SUBF); return;
+					case Mulf: opf(a); em(MULF); return;
+					case Divf: opf(a); em(DIVF); return;
+
+					case Add: op(a, ADD); return;
+					case Sub: op(a, SUB); return;
+					case Mul: op(a, MUL); return;
+					case Div: op(a, DIV); return;
+					case Dvu: op(a, DVU); return;
+					case Mod: op(a, MOD); return;
+					case Mdu: op(a, MDU); return;
+					case And: op(a, AND); return;
+					case Or:  op(a, OR);  return;
+					case Xor: op(a, XOR); return;
+					case Shl: op(a, SHL); return;
+					case Shr: op(a, SHR); return;
+					case Sru: op(a, SRU); return;
+						  
+  					case Eq:  opt(a); em(EQ); return;
+					case Ne:  opt(a); em(NE); return;
+					case Lt:  opt(a); em(LT); return;
+					case Ge:  opt(a); em(GE); return;
+					case Ltu: opt(a); em(LTU); return;
+					case Geu: opt(a); em(GEU); return;
+					case Eqf: opf(a); em(EQF); return;
+					case Nef: opf(a); em(NEF); return;
+					case Ltf: opf(a); em(LTF); return;
+					case Gef: opf(a); em(GEF); return;
+					  
+					case Cid: rv(a.lChild); em(CID); return;
+					case Cud: rv(a.lChild); em(CUD); return;
+					case Cdi: rv(a2); em(CDI); return;
+					case Cdu: rv(a2); em(CDU); return;
+					case Cic: rv(a2); emi(SHLI,24); emi(SHRI,24); return;
+					case Cuc: rv(a2); emi(ANDI,255); return;
+					case Cis: rv(a2); emi(SHLI,16); emi(SHRI,16); return;
+					case Cus: rv(a2); emi(ANDI,0xffff); return;
+
+					case Comma: rv(a.lChild); rv(a2); return;
+					case Cond: t = testnot(a.lChild,0); rv(a2); c = emf(JMP,0); patch(t,ip); rv(a.value3); patch(c,ip); return;
+
+  					case Lor:
+    					t = test(a2,test(a.lChild,0));
+    					emi(LI,0);
+    					c = emf(JMP,0);
+    					patch(t,ip);
+    					emi(LI,1);
+    					patch(c,ip);
+    					return;
+
+  					case Lan:
+    					t = testnot(a2,testnot(a.lChild,0));
+    					emi(LI,1);
+    					c = emf(JMP,0);
+						patch(t,ip);
+						emi(LI,0);
+						patch(c,ip);
+						return;
+
+					case Not: rv(a2); emi(LBI,0); em(EQ); return;
+					case Notf:rv(a2);emi(LBIF,0);em(EQF); return;
+
+					case Num:
+						if ((a.rChild<<8)>>8 == a2) emi(LI,a2); else { emi(LI,a2>>24); emi(LHI,(a2<<8)>>8); }
+						return;
+
+					case Numf:
+						d = toDouble(a.rChild);
+						if (((int)(d*256.0)<<8>>8)/256.0 == d) emi(LIF, d*256.0);
+						else { data = (data+7)&-8; *(double*)(gs + data) = d; emg(LGD, data); data += 8; }
+						return;
+
+					case Ptr:
+						t = a.lChild;
+						if (a2.value == Add && a2.rChild.value == Num && (c = a2.rChild.rChild, c<<8>>8 == c)) {
+						  rv(a2.lChild);
+						  emi(LX+lmod(t),c);
+						  return;
+						}
+						rv(a2);
+						em(LX+lmod(t));
+						return;
+
+					case Lea:  eml(LEA,  a2); return;
+					case Leag: emg(LEAG, a2); return;
+
+					case Auto:   eml(LL+lmod(a.lChild), a2); return;
+					case Static: emg(LG+lmod(a.lChild), a2); return;
+
+					case Fun: emj(LEAG, a2); return;
+					case FFun: n = a2; n.val = emf(LEAG, n.val); return;
+
+  					case Fcall:
+  						b = a.rChild; a = a.lChild;
+  						b2 = (b2.rChild == null ? etree[b2.addr-1] : b2.rChild); 
+  						for (t = 0 ; b != null ; t += 8) {
+  							if (b.lChild == DOUBLE || b.lChild == FLOAT) { rv(b2); loc -= 8; em(PSHF); }
+      						else if (b2 == Num && b2.rChild<<8>>8 == b2.rChild) { loc -= 8; emi(PSHI,b2.rChild); }
+      						else { rv(b2); loc -= 8; em(PSHA); }
+      						b = b.value;
+    						b2 = (b2.rChild == null ? etree[b2.addr-1] : b2.rChild); 
+    					}
+    					if (a.value == FFun) { n = a2; n.val = emf(JSR, n.val); }
+    			   else if (a.value == Fun) emj(JSR, a2);
+    			   else { rv(a); em(JSRA); } // function address
+    					if (t) { emi(ENT,t); loc += t; }
+    					return;
+
+  					default:
+    					print(sprintf("fatal compiler error rv(int *a) *a=%d\n", a.addr)); exit(-1);
+  				}
+			}
 			
+			// ----------------------------------------------------------------------------------------------
+			// 		statement
+			var brk, cont, def;
+			function stmt() {
+  				var a, b, c, d;
+  				var es = null, et = null ;
+  				var cmin = INF, cmax = -INF;
+
+  				switch (tk) {
+	  				case If:
+						next(); skip(Paren);
+						es = e;
+						expr(Comma); 
+						if (ty == DOUBLE || ty == FLOAT) 
+							node(Nzf, null, null);
+						a = testnot(etree[e], 0);
+						e = es;
+						skip(')');
+						stmt();
+						if (tk == Else) {
+							next();
+							b = emf(JMP,0);
+							patch(a,ip);
+							stmt();
+							a = b;
+						}
+    					patch(a,ip);
+    					return;
+
+					case While:
+						b = brk; brk = 0;
+						c = cont; cont = emf(JMP, 0);
+						a = ip;
+						es = e;
+						next(); skip(Paren);
+						expr(Comma); 
+						if (ty == DOUBLE || ty == FLOAT) 
+							node(Nzf, null, null);
+						skip(')');
+						stmt();
+						patch(cont,ip); cont = c;
+						patch(test(etree[e],0), a);
+						e = es;
+						patch(brk,ip); brk = b;
+						return;
+
+  					case Return:
+						next();
+						if (tk != ';') {
+						  es = e;
+						  expr(Comma);
+						  cast(rt);
+						  rv(etree[e]);
+						  e = es;
+						}
+						emi(LEV,-loc);
+						skip(';');
+						return;
+
+  					case Break:
+    					brk = emf(JMP, brk);
+    					next(); skip(';');
+    					return;
+
+					case Continue:
+						cont = emf(JMP, cont);
+						next(); skip(';');
+						return;
+
+  					case For:
+						next(); skip(Paren);
+						if (tk != ';') {
+						  es = e;
+						  expr(Comma);
+						  trim();
+						  rv(etree[e]);
+						  e = es;
+						}
+						skip(';');
+						es = et = 0;
+						if (tk != ';') { es = e; expr(Comma); if (ty == DOUBLE || ty == FLOAT) node(Nzf, null, null); }
+						skip(';');
+						if (tk != ')') { et = e; expr(Comma); }
+						skip(')');
+						if (es != 0) d = emf(JMP, 0);
+						a = ip;
+						b = brk; brk = 0;
+						c = cont; cont = 0;
+						stmt();
+						patch(cont, (es || et) ? ip : a);
+						cont = c;
+						if (et) { trim(); rv(etree[e]); e = et; }
+						if (es) {
+						  patch(d,ip);
+						  patch(test(etree[e],0), a);
+						  e = es;
+						} else
+						  emj(JMP, a);
+						patch(brk,ip); brk = b;
+						return;
+
+  case Do:
+    next();
+    b = brk; brk = 0;
+    c = cont; cont = 0;
+    a = ip;
+    stmt();
+    patch(cont,ip); cont = c;
+    skip(While); skip(Paren);
+    es = e;
+    expr(Comma); if (ty == DOUBLE || ty == FLOAT) *(e-=2) = Nzf;
+    patch(test(e,0), a);
+    e = es;
+    skip(')'); skip(';');
+    patch(brk,ip); brk = b;
+    return;
+
+  case Switch:
+    next(); skip(Paren);
+    es = e;
+    expr(Comma);
+    rv(e);
+    e = es;
+    a = emf(JMP, 0);
+    skip(')');
+    b = brk; brk = 0;
+    d = def; def = 0;
+    es = e;
+    stmt();
+    brk = emf(JMP, brk);
+    patch(a,ip);
+    if (es == e) { //err("no case in switch statement");   XXX
+      if (def) emj(JMP, def);
+    } else {  // XXX lots of possible signed/unsigned under/overflow issues in this block
+      cmin = cmax = *(et = es - 2);
+      while (et > e) { et -= 2; if ((c = *et) > cmax) cmax = c; else if (c < cmin) cmin = c; }
+      et = es;
+      if ((uint)(cmax - cmin) <= ((int)es - (int)e)*2) { // jump table
+        if (cmin > 0 && cmax <= (int)es - (int)e) cmin = 0;
+        else if (cmin) { opi(SUB, cmin); cmax -= cmin; }
+        lbi(++cmax);
+        data = (data + 3) & -4;
+        if (def) { emj(BGEU, def); emg(JMPI, data); def -= ip; }
+        else { brk = emf(BGEU, brk); emg(JMPI, data); }
+        for (c = 0; c < cmax; ) ((int *)(gs + data))[c++] = def;
+        while (et > e) { et -= 2; ((int *)(gs + data))[*et - cmin] = et[1] - ip; }
+        data += cmax * 4;       
+      } else { // jump list
+//        printf("jump list at line %d\n",line);
+        while (et > e) { et -= 2; lbi(*et); emj(BE, et[1]); }  // XXX overflow issues?
+        if (def) emj(JMP, def);
+      }
+    }
+    def = d;
+    e = es;
+    patch(brk,ip); brk = b;
+    return;
+
+  case Case:
+    next();
+    a = *(e-=2) = imm(); e[1] = ip;
+    if (tk == Dots) {
+      next();
+      b = imm();
+      while (a < b) { *(e-=2) = ++a; e[1] = ip; }
+    }
+    skip(':');
+    stmt();
+    return;
+
+  case Asm:
+    next();
+    skip(Paren);
+    a = imm();
+    if (tk == Comma) { next(); emi(a, imm()); } else em(a);
+    skip(')');
+    skip(';');
+    return;
+
+  case Va_start:  // va_start(ap,v) ap = &v;
+    next();
+    skip(Paren);
+    es = e;
+    expr(Assign);
+    b = (int)e;
+    skip(Comma);
+    expr(Assign);
+    addr();
+    *(e-=2) = Assign; e[1] = b;
+    rv(e);
+    e = es;
+    skip(')');
+    skip(';');
+    return;
+
+  case Default:
+    next(); skip(':');
+    def = ip;
+    stmt();
+    return;
+
+  case Goto:
+    next();
+    if (tk == Id) {
+      if (!id->class) {
+        ploc->class = 0;
+        ploc->id = id;
+        ploc++;
+        id->class = FLabel;
+        id->val = emf(JMP,0);
+      }
+      else if (id->class == FLabel) id->val = emf(JMP,id->val);
+      else if (id->class == Label) emj(JMP,id->val);
+      else err("bad label name");
+    }
+    else
+      err("bad goto");
+    next(); skip(';');
+    return;
+
+  case '{':
+    next();
+    while (tk != '}') stmt();
+  case ';':
+    next();
+    return;
+
+  case Id:
+    if (*pos == ':') {
+      pos++;
+      //printf("+ + + processing label\n");  // XXX put on local list if 0 or global
+      if (!id->class) {
+        ploc->class = 0;
+        ploc->id = id;
+        ploc++;
+        id->class = Label;
+        id->val = ip;
+      } else if (id->class == FLabel) {
+        patch(id->val,ip);
+        id->class = Label;
+        id->val = ip;
+      } else
+        err("bad label name"); // XXX should let labels override globals just like other locals
+      next();
+      stmt();
+      return;
+    }
+  default:
+    es = e;
+    expr(Comma);
+    trim();
+    rv(e);
+    e = es;
+    skip(';');
+  }
+}
+			
+
 				  		
 			// -----------------------------------------------------------------------------------------------
 			//  'main' process
