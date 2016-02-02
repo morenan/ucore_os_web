@@ -12,8 +12,71 @@ uCPU的内存是设在javascript环境下的一段预设数组中，数组储存
 （2）	静态方法和动态页表同时进行实地址生成。当动态页表缺失时触发TLB MISS异常，跳转到异常处理代码重填TLB。
 uCPU的输入输出包括键盘的输入和屏幕的输出。键盘输入的字符存储于地址0xbf00（串口1），屏幕的输出为0xbf01（串口2）。
 
+uCPU支持基于mips32指令集的标准子集下的指令的执行，指令集如下：
+指令				  编码								功能
+ADDIU rt rs imme  001001ssssstttttiiiiiiiiiiiiiiii  rt <- rs + sign_extend(imme)
+ANDI  rt rs imme  001100ssssstttttiiiiiiiiiiiiiiii  rt <- rs & zero_extend(imme)
+ORI   rt rs imme  001101ssssstttttiiiiiiiiiiiiiiii  rt <- rs | zero_extend(imme)
+XORI  rt rs imme  001110ssssstttttiiiiiiiiiiiiiiii  rt <- rs ^ zero_extend(imme)
+ADDU  rd rs rt	  000000ssssstttttddddd00000100001  rd <- rs + rt
+SUBU  rd rs rt    000000ssssstttttddddd00000100011  rd <- rs - rt
+AND   rd rs rt	  000000ssssstttttddddd00000100100  rd <- rs & rt
+OR    rd rs rt    000000ssssstttttddddd00000100101  rd <- rs | rt
+XOR   rd rs rt    000000ssssstttttddddd00000100110  rd <- rs ^ rt
+NOR   rd rs rt    000000ssssstttttddddd00000100111  rd <- ~(rs | rt)
+MULT  rs rt       000000sssssttttt0000000000011000  lo <- (rs * rt) >> 32,  hi <- (rs * rt) & 65535
+SLL   rd rt imme  00000000000tttttdddddiiiii000000  rd <- rt sll imme
+SRL   rd rt imme  00000000000tttttdddddiiiii000010  rd <- rt srl imme
+SRA   rd rt imme  00000000000tttttdddddiiiii000011  rd <- rt sra imme
+SLLV  rd rt rs    000000ssssstttttddddd00000000100  rd <- rt sll rs
+SRLV  rd rt rs    000000ssssstttttddddd00000000110  rd <- rt srl rs
+SRAV  rd rt rs    000000ssssstttttddddd00000000111  rd <- rt sra rs
 
+BLTZ  rs imme     000001sssss00000iiiiiiiiiiiiiiii  if (rs < 0)   PC <- PC + sign_extend(imme)
+BGEZ  rs imme     000001sssss00001iiiiiiiiiiiiiiii  if (rs >= 0)  PC <- PC + sign_extend(imme)
+BEQ   rs rt imme  000100ssssstttttiiiiiiiiiiiiiiii  if (rs == rt) PC <- PC + sign_extend(imme)
+BNE   rs rt	imme  000101ssssstttttiiiiiiiiiiiiiiii  if (rs != rt) PC <- PC + sign_extend(imme)
+BLEZ  rs imme     000110sssss00000iiiiiiiiiiiiiiii  if (rs <= 0)  PC <- PC + sign_extend(imme)
+BGTZ  rs imme	  000111sssss00000iiiiiiiiiiiiiiii  if (rs > 0)   PC <- PC + sign_extend(imme)
 
+J     imme        000010iiiiiiiiiiiiiiiiiiiiiiiiii  PC <- sign_extend(imme)
+JAL   imme        000011iiiiiiiiiiiiiiiiiiiiiiiiii  PC <- sign_extend(imme), ra <- RPC
+JR    rs		  000000sssss000000000000000001000  PC <- rs
+JALR  rs rd		  000000sssss00000ddddd00000001001  PC <- rs, rd <- RPC
+
+SLT   rd rs rt	  000000ssssstttttddddd00000101010  rd <- (rs < rt) (sign_compare)
+SLTU  rd rs rt    000000ssssstttttddddd00000101011  rd <- (rs < rt) (unsign_compare)
+SLTI  rt rs imme  001010ssssstttttiiiiiiiiiiiiiiii  rt <- (rs < sign_extend(imme)) (sign_compare)
+SLTIU rt rs imme  001011ssssstttttiiiiiiiiiiiiiiii  rt <- (rs < zero_extend(imme)) (unsign_compare)
+
+MFLO  rd		  0000000000000000ddddd00000010010  rd <- lo
+MFHI  rd		  0000000000000000ddddd00000010000  rd <- hi
+MTLO  rd		  0000000000000000ddddd00000010011  lo <- rd
+MTHI  rd		  0000000000000000ddddd00000010001  hi <- rd
+MFC0  rt rd		  01000000000tttttddddd00000000000  rt <- cp0_rd
+MTC0  rt rd       01000000100tttttddddd00000000000  cp0_rd <- rt
+
+LB    rt rs imme  100000ssssstttttiiiiiiiiiiiiiiii  sign_extend(rt <- MEM[rs+sign_extend(imme)] & 255)
+LBU   rt rs imme  100100ssssstttttiiiiiiiiiiiiiiii  zero_extend(rt <- MEM[rs+sign_extend(imme)] & 255)
+LH    rt rs imme  100001ssssstttttiiiiiiiiiiiiiiii  sign_extend(rt <- MEM[rs+sign_extend(imme)] & 65535)
+LHU   rt rs imme  100101ssssstttttiiiiiiiiiiiiiiii  zero_extend(rt <- MEM[rs+sign_extend(imme)] & 65535)
+LW    rt rs imme  100011ssssstttttiiiiiiiiiiiiiiii  rt <- MEM[rs+sign_extend(imme)]
+SB    rt rs imme  101000ssssstttttiiiiiiiiiiiiiiii  MEM[rs+sign_extend(imme)] <- MEM[rs+sign_extend(imme)] & ~(255) | (rt & 255)
+SW    rt rs imme  101011ssssstttttiiiiiiiiiiiiiiii  MEM[rs+sign_extend(imme)] <- rt
+
+SYSCALL           00000000000000000000000000001100  system call
+ERET			  01000010000000000000000000000000  PC <- cp0_EPC, cp0_status <- cp0_status & ~(1<<EXL)
+
+中断/异常协 理的一般流程如下:
+(1)		保存中断信息,主要是 EPC,BadVAddr,Status,Cause 等寄存器的信息。
+EPC:存储异常协理之后程序恢复执行的地址。选于一般异常,当前开生错错的指令地址即为EPC应当保存的地址;而选于硬件中断,由于是异步产生则可以任意设定一条并未执行完成的指令地址保存,但在进 入下一步协理之前,该指令前的指令都应当被执行完。
+BadVAddr:捕捉最近一次地址错或TLB异常(重填、失效、修改)时的虚拟地址。 
+Status:将EXL位置为1,进入kernel模式进行中断协理
+Cause:记下异常号。
+EnrtyHi:tlb异常时,记记下BadVAddr的部分高位。
+(2)		根据Cause中的异常号跳转到相应的异常协理函数入口
+(3)		中断协理
+(4)		通过调用ERET指令恢复实复, 返回EPC所存地址执行并且将Status中的EXL重置为0表示进入user模式。
 
 uComplier是在网络环境的ucore操作系统下运行的c语言的编译器，主要功能是将c语言代码转换为mips32机器指令码（跳过汇编生成）。其主要步骤分为3部分：词义分析，语义分析，指令生成。
 词义分析是识别出原代码中的所有保留字，符号和名称，标记为token保存于哈希表中，并进行括号匹配和数字匹配等合法性检查。与原版编译器实现不同，js中有很方便的字符串正则匹配算法，可以用正则表达式”(.?)”来进行括号匹配，”[0-9]+”（整数），”[0-9]+\.?[0-9]+”（浮点数）和”0x[0-9|a-f|A-F]{8}”（hex表示的32位整数）进行数字匹配
@@ -45,6 +108,54 @@ while (expr) stmt | switch (expr) { case value : code case value : code … defa
 11:value:func_content_begin
 …….
 37:value:func_content_end
-代码生成可直接遵循表达树。要注意的是条件结构和循环结构，可将if在指令中改为unless形式，不符合条件是直接跳转到下一语句。while循环拆解为if+repeat的形式，repeat在执行末尾进行条件转移。
+代码生成可直接遵循表达树。要注意的是条件结构和循环结构，可将if在指令中改为unless形式，不符合条件是直接跳转到下一语句。while循环拆解为if+repeat的形式，repeat在执行末尾进行条件转移。以下为每类程序结构对应的生成方法：
+variable = expr;  
+1.	Calculate the value of expr.
+2.	Store the value in memory.
+
+type name; (add a partial variable)
+	Do nothing about instruction, but remains a space of stack to store the partial variable.
+
+type name; (add a global variable)
+	Do nothing about instruction, but split a static variable memory from RAM.
+
+if (expr1) then stmt1 else stmt2
+1.	Calculate the value of expr1 and store in register 1.
+2.	Use the instruction BETZ to skip stmt1 if expr1 is False.
+3.	At the end of stmt1 and stmt2, Use the instruction B to branch to the next statement.
+
+do stmt while (expr)
+1.	At the end of this statement, Calculate expr and use the instruction BNEZ to restart the loop.
+	
+while (Expr) stmt
+1.	Seem as “if (expr) {do stmt while(expr)}” 
+
+for (expr1;expr2;expr3) stmt
+1.	Seem as “expr1;while(expr2) {stmt expr3}”
+
+switch case
+1.	Seem as “if … else if … … else …”.
+
+Call function(procedure)
+	1.	Push all the parameters to system stack. 
+2.	Push the current PC.
+3.	Use the instruction J to jump to function’s heading address.
+4.	Pop all the parameters.
+
+return value
+1.	Move the value to a special register.
+2.	Pop the current PC.(Store in another special register)
+3.	Use the instruct JR to return to last procedure.
+
+Call an object’s function
+1.	Push all the parameters.
+2.	Push this object’s heading address(seem as a parameter).
+3.	Push the current PC.
+4.	Use the instruction J to jump to function’s heading address.
+5.	Pop all the parameters.(include object address)
+
+
+
 代码生成时要注意的是，在表达树中每个节点需对应实际的指令地址，那么对于条件转移branch，在生成的时候可先搁置，最后确定所有节点的指令地址后再生成。
+
 
