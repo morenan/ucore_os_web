@@ -45,6 +45,52 @@ while (expr) stmt | switch (expr) { case value : code case value : code … defa
 11:value:func_content_begin
 …….
 37:value:func_content_end
-代码生成可直接遵循表达树。要注意的是条件结构和循环结构，可将if在指令中改为unless形式，不符合条件是直接跳转到下一语句。while循环拆解为if+repeat的形式，repeat在执行末尾进行条件转移。
+代码生成可直接遵循表达树。要注意的是条件结构和循环结构，可将if在指令中改为unless形式，不符合条件是直接跳转到下一语句。while循环拆解为if+repeat的形式，repeat在执行末尾进行条件转移。以下为每类程序结构对应的生成方法：
+variable = expr;  
+1.	Calculate the value of expr.
+2.	Store the value in memory.
+
+type name; (add a partial variable)
+	Do nothing about instruction, but remains a space of stack to store the partial variable.
+
+type name; (add a global variable)
+	Do nothing about instruction, but split a static variable memory from RAM.
+
+if (expr1) then stmt1 else stmt2
+1.	Calculate the value of expr1 and store in register 1.
+2.	Use the instruction BETZ to skip stmt1 if expr1 is False.
+3.	At the end of stmt1 and stmt2, Use the instruction B to branch to the next statement.
+
+do stmt while (expr)
+1.	At the end of this statement, Calculate expr and use the instruction BNEZ to restart the loop.
+	
+while (Expr) stmt
+1.	Seem as “if (expr) {do stmt while(expr)}” 
+
+for (expr1;expr2;expr3) stmt
+1.	Seem as “expr1;while(expr2) {stmt expr3}”
+
+switch case
+1.	Seem as “if … else if … … else …”.
+
+Call function(procedure)
+	1.	Push all the parameters to system stack. 
+2.	Push the current PC.
+3.	Use the instruction J to jump to function’s heading address.
+4.	Pop all the parameters.
+
+return value
+1.	Move the value to a special register.
+2.	Pop the current PC.(Store in another special register)
+3.	Use the instruct JR to return to last procedure.
+Call an object’s function
+1.	Push all the parameters.
+2.	Push this object’s heading address(seem as a parameter).
+3.	Push the current PC.
+4.	Use the instruction J to jump to function’s heading address.
+5.	Pop all the parameters.(include object address)
+
+
 代码生成时要注意的是，在表达树中每个节点需对应实际的指令地址，那么对于条件转移branch，在生成的时候可先搁置，最后确定所有节点的指令地址后再生成。
+
 
