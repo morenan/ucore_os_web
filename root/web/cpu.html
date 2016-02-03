@@ -1,0 +1,325 @@
+<html>
+	<head>
+		<style type="text/css">
+			body {background-color:#000000;}
+		</style>
+	</head>
+	<body> 
+		<input type="file" id="instfile"/> <input type="button" onclick="read()" value="read"/> <br>
+		<div id="board"></div>
+	</body>
+	<script type="text/javascript">
+		// ==================================================================================
+		//  ram
+		// ==================================================================================
+		var RAM_LENGTH = 65536;
+		
+		var ram = new Object();
+		ram.data = new Int32Array(RAM_LENGTH);
+		ram.addr1 = 0; ram.data1 = 0; ram.oe1 = 0; ram.re1 = 0; ram.we1 = 0;
+		ram.addr2 = 0; ram.data2 = 0; ram.oe2 = 0; ram.re2 = 0; ram.we2 = 0;
+		ram.addr3 = 0; ram.data3 = 0; ram.oe3 = 0; ram.re3 = 0; ram.we3 = 0;
+		ram.clock_edge_up = function() {
+			if (ram.oe1 == 1) {
+				if (this.re1 == 1 && this.we1 == 0) 
+					this.data1 = this.data[ram.addr1];
+				if (this.re1 == 0 && this.we1 == 1) 
+					this.data[ram.addr1] = this.data1;
+			}
+			if (ram.oe2 == 1) {
+				if (this.re2 == 1 && this.we2 == 0) 
+					this.data2 = this.data[ram.addr2];
+				if (this.re2 == 0 && this.we2 == 1) 
+					this.data[ram.addr2] = this.data2;
+			}
+			if (ram.oe3 == 1) {
+				if (this.re3 == 1 && this.we3 == 0) 
+					this.data3 = this.data[ram.addr3];
+				if (this.re3 == 0 && this.we3 == 1) 
+					this.data[ram.addr3] = this.data3;
+			}
+		}
+		ram.clock_edge_down = function() {} 
+		// ==================================================================================
+		// instruction decoder
+		// ==================================================================================
+		var idec = new Object();
+		idec.decode = function(inst) {
+			var dec_s = new Object();
+			// --------- alu -------------------------------------------
+			if ((inst>>26) == 0) {
+				if ((inst&64) != 0) // ADD, SUB, AND, OR, NOR, XOR
+					dec_s.reg_op = inst&15;
+				else                // SLL, SRL, SRA
+					dec_s.reg_op = 12+(inst&3);
+				switch (inst&63) {
+					case 0x00 : case 0x01 : case 0x02 : // SLL, SRL, SRA
+						dec_s.reg_we = 1;
+						dec_s.reg_mux = 0;
+						dec_s.reg_s = (inst>>16)&63;
+						dec_s.reg_d = (inst>>11)&63;
+						//dec_s.alu_mux1 = 0;
+						dec_s.alu_mux2 = 1;
+						break;
+					case 0x11 : case 0x13 : // MTLO, MTHI
+						dec_s.reg_we = 0;
+						dec_s.reg_s = (inst>>11)&63;
+						break;
+					case 0x12 : // MFLO
+						dec_s.reg_we = 1;
+						dec_s.reg_mux = 1;
+						dec_s.reg_d = (inst>>11)&63;
+						break;
+					case 0x10 : // MFHI
+						dec_s.reg_we = 1;
+						dec_s.reg_mux = 2;
+						dec_s.reg_d = (inst>>11)&63;
+						break;
+					case 0x09 : // JALR
+						dec_s.reg_we = 1;
+						dec_s.reg_mux = 4;
+						dec_s.reg_d = (inst>>11)&63;
+						break;
+					case 0x08 : // JR
+					case 0x18 : case 0x1A : // MULT, DIV
+					case 0x0C : // SYSCALL
+						dec_s.reg_we = 0;
+						dec_s.reg_s = (inst>>21)&63; 
+						dec_s.reg_t = (inst>>16)&63; 
+						break;
+					default:
+						dec_s.reg_we = 1; 
+						dec_s.reg_mux = 0;
+						dec_s.reg_s = (inst>>21)&63; 
+						dec_s.reg_t = (inst>>16)&63; 
+						dec_s.reg_d = (inst>>11)&63;
+						//dec_s.alu_mux1 = 1; 
+						dec_s.alu_mux2 = 0;
+						break;
+				}
+			} else {
+				switch (inst>>26) {
+					case 0x09 : case 0x0C : case 0x0D : case 0x0E : // ADDIU, ANDI, ORI, XORI
+						dec_s.reg_we = 1; 
+						dec_s.reg_mux = 0;
+						dec_s.reg_s = (inst>>21)&63; 
+						dec_s.reg_d = (inst>>16)&63;
+						//dec_s.alu_mux1 = 1; 
+						dec_s.alu_mux2 = 1; 
+						dec_s.reg_op = (inst>>26)&7;
+						break;
+					case 0x0A : case 0x0B : // SLTI, SLTIU
+						dec_s.reg_we = 1; 
+						dec_s.reg_mux = 0;
+						dec_s.reg_s = (inst>>21)&63; 
+						dec_s.reg_d = (inst>>16)&63;
+						//dec_s.alu_mux1 = 1; 
+						dec_s.alu_mux2 = 1;
+						dec_s.reg_op = (inst>>26)&15;
+						break;
+					case 0x20 : case 0x21 : case 0x23 : case 0x24 : case 0x25 : case 0x28 : case 0x2B : // LOAD, SAVE
+						dec_s.reg_we = 0; 
+						dec_s.reg_s = (inst>>21)&63;
+						//dec_s.alu_mux1 = 1; 
+						dec_s.alu_mux2 = 1; 
+						dec_s.reg_op = 0x01;
+					case 0x10 : // MFC0, MTC0
+						if (((inst>>23)&1) == 0) { // MFC0
+							dec_s.reg_we = 1;
+							dec_s.reg_mux = 3;
+							dec_s.reg_d = (inst>>16)&63;
+						} else {				   // MTC0
+							dec_s.reg_we = 0;
+							dec_s.reg_mux = 0;
+						}
+					default :
+						dec_s.reg_we = 0;
+						break;
+				}
+			}
+			// --------- ram -------------------------------------------
+			switch (inst>>26) {
+				case 0x20 : case 0x21 : case 0x23 : case 0x24 : case 0x25 : // LOAD 
+					dec_s.ram_oe2 = 1; 
+					dec_s.ram_re2 = 1; 
+					dec_s.ram_we2 = 0;
+					dec_s.ram_oe3 = 0;
+					dec_s.ram_mux2 = (inst>>26)&3;
+					break;
+				case 0x28 :	// SAVE BYTE
+					dec_s.ram_oe2 = 1; 
+					dec_s.ram_re2 = 1; 
+					dec_s.ram_we2 = 0;
+					dec_s.ram_oe3 = 1; 
+					dec_s.ram_re3 = 0; 
+					dec_s.ram_we3 = 1;
+					dec_s.ram_mux2 = 0x03;
+					dec_s.ram_mux3 = 0x00;
+					break;
+				case 0x2B : // SAVE WORD
+					dec_s.ram_oe2 = 0;
+					dec_s.ram_oe3 = 1;
+					dec_s.ram_re3 = 0;
+					dec_s.ram_we3 = 1;
+					dec_s.ram_mux3 = 0x03;
+					break;
+			}
+			// --------- pc --------------------------------------------
+			if ((inst>>26) == 0) {
+				switch (inst&63) {
+					case 0x08 : case 0x09 :	// JA, JALR  
+						dec_s.pc_mux = 2;
+						break;
+					default :
+						dec_s.pc_mux = 0;
+						break;
+				}
+			} else {
+				switch (inst>>26) {
+					case 0x02 : case 0x03 : // J, JAL
+						dec_s.pc_mux = 3;
+						break;
+					case 0x04 : case 0x05 : // BEQ, BNE
+						dec_s.pc_mux = 1;
+						//dec_s.b_alu_mux1 = 0;
+						dec_s.b_alu_mux2 = 0;
+						dec_s.b_alu_op = inst>>26;
+						break;
+					case 0x01 : case 0x06 : case 0x07 : // BLTZ, BLEZ, BGTZ, BGEZ
+						dec_s.pc_mux = 1;
+						//dec_s.b_alu_mux1 = 0;
+						dec_s.b_alu_mux2 = 1;
+						dec_s.b_alu_op = ((inst>>26)<<1) | ((inst>>16)&1);
+						break;
+					default:
+						dec_s.pc_mux = 0;
+						break;
+				}
+			}
+			// --------- lo hi cp0 --------------------------------------
+			if ((inst>>26) == 0) { 
+				switch (inst&63) {
+					case 0x18 : // MULT
+						dec_s.lohi_ae = 1;
+						dec_s.lohi_op = 0;
+						dec_s.lo_we = 0;
+						dec_s.hi_we = 0;
+						dec_s.cp0_we = 0;
+						break;
+					case 0x1A : // DIV
+						dec_s.lohi_ae = 1;
+						dec_s.lohi_op = 1;
+						dec_s.lo_we = 0;
+						dec_s.hi_we = 0;
+						dec_s.cp0_we = 0;
+						break;
+					case 0x13 : // MTLO
+						dec_s.lohi_ae = 0;
+						dec_s.lo_we = 1;
+						dec_s.hi_we = 0;
+						dec_s.cp0_we = 0;
+						break;
+					case 0x11 : // MTHI
+						dec_s.lohi_ae = 0;
+						dec_s.lo_we = 0;
+						dec_s.hi_we = 1;
+						dec_s.cp0_we = 0;
+						break;
+					default:
+						dec_s.lohi_ae = 0;
+						dec_s.lo_we = 0;
+						dec_s.hi_we = 0;
+						dec_s.cp0_we = 0;
+						break;
+				}
+			} else {
+				switch (inst>>21) {
+					case 0x204 : // MTC0
+						dec_s.lohi_ae = 0;
+						dec_s.lo_we = 0;
+						dec_s.hi_we = 0;
+						dec_s.cp0_we = 1;
+						dec_s.cp0_rd = (inst>>11)&63;
+						break;
+					default :
+						dec_s.lohi_ae = 0;
+						dec_s.lo_we = 0;
+						dec_s.hi_we = 0;
+						dec_s.cp0_we = 0;
+						break;
+				}
+			}	
+		}
+		// ==================================================================================
+		//  registers
+		// ==================================================================================
+		var reg = new Object();
+		reg.data = new Int32Array(64);
+		reg.rs = 0; reg.rt = 0; reg.rd = 0; reg.rd_we = 0;
+		reg.rs_value = 0; reg.rt_value = 0; reg.rd_value = 0;
+		reg.clock_edge_up = function() {
+			this.rs_value = this.data[this.rs];
+			this.rt_value = this.data[this.rt];
+			if (this.rd_we == 1) 
+				this.data[this.rd] = this.rd_value;
+		}
+		reg.clock_edge_down = function() {} 
+		
+		var cp0 = new Object();
+		cp0.data = new Int32Array(64);
+		cp0.rs = 0; cp0.rd = 0; cp0.rd_we = 0;
+		cp0.rs_value = 0; cp0.rd_value = 0;
+		cp0.clock_edge_up = function() {
+			this.rs_value = this.data[this.rs];
+			if (this.rd_we == 1) 
+				this.data[this.rd] = this.rd_value;
+		}
+		cp0.clock_edge_down = function() {} 
+		
+		var lohi = new Object();
+		lohi.data = new Int23Array(2);
+		lohi.lo_value_r = 0; lohi.hi_value_r = 0;
+		lohi.lo_value_w = 0; lohi.hi_value_w = 0;
+		lohi.lo_we = 0; lohi.hi_we = 0; 
+		lohi.src1 = 0; lohi.src2 = 0; lohi.op = 0; lohi.ae = 0;
+		lohi.clock_edge_up = function() {
+			if (this.ae == 1) {
+				if (this.op == 0) {
+					this.data[0] = (this.src1*this.src2)&65535;
+					this.data[1] = (this.src1*this.src2)>>32;
+				} else if (this.op == 1) {
+					this.data[0] = this.src1/this.src2;
+					this.data[1] = this.src1%this.src2;
+				}
+			} else {
+				if (this.lo_we == 1) 
+					this.data[0] = this.lo_value_w;
+				if (this.hi_we == 1) 
+					this.data[1] = this.hi_value_w;
+			}
+			this.lo_value_r = this.data[0];
+			this.hi_value_r = this.data[1];
+		}
+		lohi.clock_edge_down = function() {}
+		
+		// ==================================================================================
+		// 	cpu simulator
+		// ==================================================================================
+		var instfile = document.getElementById("instfile");
+		var board 	 = document.getElementById("board");
+		board.style.color = "#FFFFFF";
+		board.style.fontFamily = "Courier";
+		board.style.fontSize = 16;	
+		var reader = new FileReader();
+		function read() {
+			var file = instfile.files[0];
+			//alert("file = " + file.name);
+			reader.readAsArrayBuffer(file);
+			reader.onload = function (e) {
+				var buff = this.result;
+				var int8 = new Int8Array(buff);
+				for (var i = 0 ; i < int8.length ; i++)
+					board.innerHTML = board.innerHTML + int8[i] + " ";}
+		}	
+	</script>
+</html>

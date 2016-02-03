@@ -1,0 +1,29 @@
+<html>
+	<head>
+		<style type="text/css">
+			body {background-color:#000000;}
+		</style>
+	</head>
+	<body> 
+		<input type="file" id="instfile"/> <input type="button" onclick="read()" value="read"/> <br>
+		<div id="board"></div>
+	</body>
+	<script type="text/javascript">
+			var instfile = document.getElementById("instfile");
+			var board 	 = document.getElementById("board");
+			board.style.color = "#FFFFFF";
+			board.style.fontFamily = "Courier";
+			board.style.fontSize = 16;	
+			var reader = new FileReader();
+			function read() {
+				var file = instfile.files[0];
+				//alert("file = " + file.name);
+				reader.readAsArrayBuffer(file);
+				reader.onload = function (e) {
+					var buff = this.result;
+					var int8 = new Int8Array(buff);
+					for (var i = 0 ; i < int8.length ; i++)
+						board.innerHTML = board.innerHTML + int8[i] + " ";}
+			}	
+	</script>
+</html>
