@@ -5,7 +5,7 @@ uCPU是在网络环境下的ucore操作系统中运行的内核模拟器。其�
 （2）	显示寄存器状态，将所有寄存器的值（包括协寄存器和PC）在屏幕中打印出来。一般是在断点暂停状态下进行显示。
 （3）	显示系统栈内容。如有需要，可将栈中暂存的PC地址标记出来。
 （4）	显示一段内存的内容。需给定内存的起始地址和终止地址。
-
+（5）	将一段mips机器指令反译码为汇编指令并显示。
 
 
 uCPU的内存是设在javascript环境下的一段预设数组中，数组储存的内容为32位整数。内存设置了与处理器相连的三个数据通路，分别用于指令的读取，数据的读取以及数据的写入。数据通路由32位的数据线，22位的地址线和读写使能构成。读写使能跟一般的RAM相比做了很大的简化。当写入数据时，直接将OE和WE置0，当读取数据时，将OE和RE置0。内存划分为指令区域，只读区域，读写区域以及IO缓存区域，指令存放的地址空间为0x0000~0x0fff（虚地址，下同），只能读取不能更改的地址空间为0x1000~0x2fff，自由读写的地址空间为0x3000~0xbeff，IO的缓存即串口缓存的地址为0xbf00,0xbf01,0xbf02,0xbf03。
@@ -56,8 +56,8 @@ MFLO  rd		  0000000000000000ddddd00000010010  rd <- lo
 MFHI  rd		  0000000000000000ddddd00000010000  rd <- hi
 MTLO  rd		  0000000000000000ddddd00000010011  lo <- rd
 MTHI  rd		  0000000000000000ddddd00000010001  hi <- rd
-MFC0  rt rd		  01000000000tttttddddd00000000000  rt <- cp0_rd
-MTC0  rt rd       01000000100tttttddddd00000000000  cp0_rd <- rt
+MFC0  rt rd		  01000000000tttttddddd00000000000  rt <- cp0[rd]
+MTC0  rt rd       01000000100tttttddddd00000000000  cp0[rd] <- rt
 
 LB    rt rs imme  100000ssssstttttiiiiiiiiiiiiiiii  sign_extend(rt <- MEM[rs+sign_extend(imme)] & 255)
 LBU   rt rs imme  100100ssssstttttiiiiiiiiiiiiiiii  zero_extend(rt <- MEM[rs+sign_extend(imme)] & 255)
@@ -68,7 +68,8 @@ SB    rt rs imme  101000ssssstttttiiiiiiiiiiiiiiii  MEM[rs+sign_extend(imme)] <-
 SW    rt rs imme  101011ssssstttttiiiiiiiiiiiiiiii  MEM[rs+sign_extend(imme)] <- rt
 
 SYSCALL           00000000000000000000000000001100  system call
-ERET			  01000010000000000000000000000000  PC <- cp0_EPC, cp0_status <- cp0_status & ~(1<<EXL)
+ERET			  01000010000000000000000000000000  PC <- cp0[EPC], cp0_status <- cp0_status & ~(1<<EXL)
+TLBWI			  01000010000000000000000000000010  write TLB table item in special index.
 
 中断/异常协 理的一般流程如下:
 (1)		保存中断信息,主要是 EPC,BadVAddr,Status,Cause 等寄存器的信息。
