@@ -1,0 +1,9 @@
+#include <stdio.h>
+#include <stdlib.h>
+
+HaHa haha;
+
+void main(int argc, char** argv) {
+	
+}
+

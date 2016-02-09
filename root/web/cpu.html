@@ -19,7 +19,7 @@
 		
 		var line = 0, column = 0;
 		var text = "", cmd = "";
-		var ctrl_active = false;
+		var ctrl_active = true;
 		document.onkeypress = function(event) {
 			event = (event != null) ? event : window.event;
 			if (!ctrl_active) return;
@@ -649,7 +649,7 @@
 			board.innerHTML += sprintf("simulator pause at PC=0x%08x <br>", this.cpu.pc); 
 		}
 		sim.read = function(filename) {
-			var file = instfile.files[0];
+			var file = new File(filename);
 			var reader = new FileReader();
 			reader.readAsArrayBuffer(file);
 			reader.onload = function (e) {
