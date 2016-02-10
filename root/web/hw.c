@@ -1,7 +1,16 @@
 #include <stdio.h>
-#include <stdlib.h>
+
+void helloworld() {
+	printf("helloworld\n");
+}
 
 void main(int argc, char** argv) {
-	haha = 1;	
+	int i = 0;
+	void* f = 0;
+	int j = f();
+	while (i < 10) {
+		helloworld();
+		i++;
+	}
 }
 

@@ -1,9 +1,14 @@
 #include <stdio.h>
-#include <stdlib.h>
 
-HaHa haha;
+void helloworld() {
+	printf("helloworld\n");
+}
 
 void main(int argc, char** argv) {
-	
+	int i = 0;
+	while (i < 10) {
+		helloworld();
+		i++;
+	}
 }
 

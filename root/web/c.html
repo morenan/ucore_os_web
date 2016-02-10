@@ -17,9 +17,11 @@
 		board.style.fontFamily = "Courier";
 		board.style.fontSize = 16;
 		
+		var ui = new Object();
+		
 		var line = 0, column = 0;
 		var text = "", cmd = "";
-		var ctrl_active = true;
+		var ctrl_active = false;
 		document.onkeypress = function(event) {
 			event = (event != null) ? event : window.event;
 			if (!ctrl_active) return;
@@ -28,6 +30,12 @@
 					text = text.slice(text.indexOf("<br>")+4);
 				text = text + cmd + "<br>";
 				board.innerHTML = text;
+				if (cmd.slice(0, 4) == "load") 
+					ui.load(cmd.slice(5));
+				else if (cmd.slice(0, 3) == "save")
+					ui.save(cmd.slice(5));
+				else if (cmd == "compile") 
+					ui.compile();
 				cmd = "";
 				column = 0;
 			} else if (event.keyCode == 8 && column > 0) {
@@ -35,12 +43,14 @@
 				board.innerHTML = text + cmd;
 				column -= 1;
 			} else if (event.charCode) {
-				if (cmd.slice(0, 3) == "load") 
-					sim.read(cmd.slice(4));
 				cmd += String.fromCharCode(event.charCode);
 				board.innerHTML = text + cmd;
 				column += 1;
 			}
+		}
+		function print(str) {
+			text = text + str;
+			board.innerHTML = text;
 		}
 		function println(str) {
 			if (++line > 40) 
@@ -50,10 +60,11 @@
 			cmd = "";
 			column = 0;
 		}
-	
+		
 		// ==================================================================================
 		// 	Reverse words
 		// ==================================================================================
+		/*
 		var rw = new Array("if", "then", "else", "do", "while", "for", 		  		   // condition structure
 			   	  		   "switch", "case", "default",								   // switch structure
 			      		   "break", "continue", "return", 					 		   // pause
@@ -62,27 +73,70 @@
 			      		   "const", "static", "unsigned", 				  			   // attribute
 			      		   "public", "private", "protected"						  	   // security
 		);
+		*/
 		// ==================================================================================
 		// 	keywords
 		// ==================================================================================
-		var op_up = new Array("++", "--", "!", "~", "*");							   // previous operator
-		var op_us = new Array("++", "--");											   // succeed operator
-		var op_b =  new Array("+", "-", "*", "/", "%", 
-							  "&", "|", "^", "&&", "||");	       					   // binary operator
-		var br = new Array("(", ")", "[", "]", "{", "}", 
-						   "\'", "\'", "\"", "\"", "/*", "*/"); 					   // bracket
+		//var op = new Array("+", "-", "*", "/", "%", "&", "|", "^", "!", "~", 
+		//				   "<", ">", "?", ":", ",");								   // operator keyword
+		//var op_up = new Array("++", "--", "!", "~", "*", "-");						   // previous operator
+		//var op_us = new Array("++", "--");											   // succeed operator
+		//var op_b =  new Array("+", "-", "*", "/", "%", ",",
+		//					  "&", "|", "^", "&&", "||", "<", ">", "<<", ">>");	       // binary operator
+		//var op_as = new Array("=", "+=", "-=", "*=", "/=", "%=",
+		//					  "<<=", ">>=", "|=", "&=", "^=");						   // assign operator
+		//var op_r = {};														   		   // operator priority
+		//var br = new Array("(", ")", "[", "]", "{", "}", 
+		//				   "\'", "\'", "\"", "\"", "/*", "*/"); 					   // bracket
 		
+		/*
+		//op_r["["] = op_r["]"] = op_r["("] = op_r[")"] = op_r["."] = op_r["->"] = 1;
+		op_r["-up"] = op_r["++up"] = op_r["--up"] = op_r["++us"] = op_r["--us"] =
+	  	op_r["!up"] = op_r["~up"]  = op_r["*up"]  = op_r["&up"]  = 2;
+	  	op_r["*b"]  = op_r["/b"]   = op_r["%b"]   = 3;
+	  	op_r["+b"]  = op_r["-b"]   = 4;
+	  	op_r[">>b"] = op_r["<<b"]  = 5;
+	  	op_r[">b"]  = op_r["<b"]   = op_r[">=b"]  = op_r["<=b"] = 6;
+	  	op_r["==b"] = op_r["!=b"]  = 7;
+	  	op_r["&b"]  = 8;
+	  	op_r["^b"]  = 9;
+	  	op_r["|b"]  = 10;
+	  	op_r["&&b"] = 11;
+	  	op_r["||b"] = 12;
+	  	op_r["?b"]  = op_r[":b"] = 13;
+	  	op_r["=as"] = op_r["+=as"] = op_r["-=as"] = op_r["*=as"] = 
+	  	op_r["/=as"]= op_r["%=as"] = op_r["<<=as"]= op_r[">>=as"]=
+	  	op_r["|=as"]= op_r["&=as"] = op_r["^=as"] = 14;
+	  	op_r[",b"] = 15;
+	  	*/
 		// ==================================================================================
-		// 	Token hash
+		// 	Record
 		// ==================================================================================
-		var tks = {};
+		var rec = new Object();
+		rec.text = "";
+		rec.types = {};
+		rec.vars = {};
+		rec.setType = function(et) {
+			this.types[et.name] = et;
+		}
+		rec.getType = function(name) {
+			return this.types[name];
+		}
+		rec.setVariable = function(et) {
+			this.vars[et.name] = et;
+		}
+		rec.getVariable = function(name) {
+			return this.vars[name];
+		}
 		// ==================================================================================
 		// 	Word Analysis
 		// ==================================================================================
-		var ana = new Object();
-		ana.analysis = function(start, prev, type) {
+		var w_ana = new Object();
+		w_ana.text = "";
+		w_ana.rec = rec;
+		w_ana.analysis = function(start, prev, type) {
 			var et = new Object();
-			var i = start, j = start;
+			var i = start, j = start, k = start;
 			var word = null;
 			i = this.text.indexOf("[^\0]", i);
 			if (this.text[i] == '\n') 
@@ -90,16 +144,17 @@
 			switch (type) {
 				case "code" :
 					j = this.text.indexOf("[^0-9a-zA-Z]", i);
-					word = this.text.slice(i, j-1);
-					i = this.text.indexOf("[^\0]", j+1);
+					word = this.text.slice(i, j);
+					j = this.text.indexOf("[^\0]", j);
+					while (text[j] == '*') {
+						word += "*";
+						j = this.text.indexOf("[^\0]", j+1);
+					}
 					switch (word) {
-						case "class" : case "struct" :
-							et.type = "class";
-							et.prev = null;
-							et.text = this.analysis(i,        prev, "class");
-							et.end = et.text.end;
+						case "struct" :
+							et 		= this.analysis(j, 		  prev, "class");
 							et.next = this.analysis(et.end+1, prev, "code");
-							et.next.prev = et;
+							this.reg.setType(et);
 							return et;
 						case "" :
 							switch (this.text[j]) {
@@ -108,13 +163,10 @@
 							}
 						default : 
 							if (getType(word) != null) {
-								et.type = "type";
-								et.prev = null;
-								et.text = this.analysis(j, 		prev, "type");
-								et.text.s_type = word;
-								et.end = et.text.end;
+								et = this.analysis(j, prev, "type");
+								et.s_type = word;
 								et.next = this.analysis(et.end+1, prev, "code");
-								et.next.prev = et;
+								this.rec.setVariable(et);
 								return et;
 							} else
 								return error(i, "'" + word + "' uncleared");
@@ -122,24 +174,23 @@
 				case "para" :
 					if (this.text[i] == '}') 
 						return null;
-					et.type = "para";
-					et.stmt = this.analysis(i,             prev, "stmt");
-					et.next = this.analysis(et.stmt.end+1, prev, "para");
-					et.next.prev = et;
-					if (et.next != null)
+					et 		= this.analysis(i,        prev, "stmt");
+					et.next = this.analysis(et.end+1, prev, "para");
+					if (et.next != null) {
 						et.end = et.next.end;
-					else
+						et.next.prev = et;
+					} else
 						et.end = et.stmt.end+1;
 					return et;
 				case "stmt" :
 					j = this.text.indexOf("[^0-9a-zA-Z]", i);
-					word = this.text.slice(i, j-1);
-					i = this.text.indexOf("[^\0]", j+1);
+					word = this.text.slice(i, j);
+					j = this.text.indexOf("[^\0]", j+1);
 					switch (word) {
 						case "" :
 							switch (this.text[j]) {
 								case '{': 
-									et.type = "stmt_set";
+									et.type = "para";
 									et.para = this.analysis(i, prev, "para");
 									return et;
 								default:
@@ -147,14 +198,14 @@
 							}
 						case "if" :
 							et.type = "if";
-							if (text[i] == '(') 
-								et.cond = this.analysis(i+1, prev, "expr");
+							if (text[j] == '(') 
+								et.cond = this.analysis(j+1, prev, "expr");
 							else
-								return error(i, "Synatx error at '" + text[i] + "'");
+								return error(j, "Synatx error at '" + text[j] + "'");
 							i = this.text.indexOf("[^\0]", et.cond.end+1);
 							et.stmt = this.analysis(i, prev, "stmt");
 							i = this.text.indexOf("[^\0]", et.stmt.end+1);
-							if (this.text.slice(i, i+3) == "else") {
+							if (this.text.slice(i, i+4) == "else") {
 								et.e_stmt = this.analysis(i, prev, "stmt");
 								et.end = et.e_stmt.end;
 							} else 
@@ -163,10 +214,10 @@
 							return et;
 						case "while" :
 							et.type = "while";
-							if (text[i] == '(') 
+							if (text[j] == '(') 
 								et.cond = this.analysis(i+1, prev, "expr");
 							else
-								return error(i, "Synatx error at '" + text[i] + "'");
+								return error(i, "Synatx error at '" + text[j] + "'");
 							i = this.text.indexOf("[^\0]", et.cond.end+1);
 							et.stmt = this.analysis(i, prev, "stmt");
 							et.end = et.stmt.end;
@@ -177,18 +228,16 @@
 							return et;
 						default :
 							if (getType(word) != null) {
-								et.type = "type";
 								et.prev = null;
-								et.text = this.analysis(j, prev, "type");
-								et.text.s_type = word;
-								et.end = et.text.end;
+								et = this.analysis(j, prev, "type");
+								et.s_type = word;
 								return et;
-							} else
-								return error(i, "'" + word + "' uncleared");
+							}
+							return this.analysis(i, prev, "expr");
 					}
 				case "expr" :
 					j = this.text.indexOf("[^0-9a-zA-Z]", i);
-					word = this.text.slice(i, j-1);
+					word = this.text.slice(i, j);
 					i = this.text.indexOf("[^\0]", j+1);
 					this.exprs = new Array();
 					while (this.text[i] != ')' && this.text[i] != ';' && this.text[i] != ']') {
@@ -205,37 +254,44 @@
 								et.s_type = "FLOAT";
 								et.value = String.parseFloat(word);	
 								this.exprs.push(et);
-							} else if (word.indexOf("^0x[0-9a-fA-F]+$") 1= -1) {
+							} else if (word.indexOf("^0x[0-9a-fA-F]+$") != -1) {
 								et = new Object();
 								et.type = "CONST";
 								et.s_type = "INT";
 								et.value = parseHex(word);
 								this.exprs.push(et);
 							} else if (isAlpha(word[0])) {
-								if ((k=word.indexOf("/.")) != -1) {
+								if (this.text.slice(i, i+2) == "()") {
+									et = new object();
+									et.type = "FUNC";
+									et.value = this.rec.getVariable(word, prev);
+									this.exprs.push(et);
+									i += 2;
+								} else if ((k=word.indexOf("/.")) != -1) {
 									o_word = this.text.slice(i, k-1);
 									if (getVariable(o_word, prev) == null)
 										return error(j, "'" + word + "' uncleared");
 									et = new Object();
-									et.type = "OBJ_ATTRIBUTE";
-									et.value = this.analysis(k+1, prev+getType(o_word,prev)+"::", "attribute");
+									et.type = "OBJ_NUMBER";
+									et.value = this.analysis(k+1, prev+getType(o_word,prev)+"::", "obj_number");
 									this.exprs.push(et);
 								} else if ((k=word.indexOf("->")) != -1) {
-									o_word = this.text.slice(i, k-1);
+									o_word = this.text.slice(i, k);
 									if (getVariable(o_word, prev) == null)
 										return error(j, "'" + word + "' uncleared");
 									et = new Object();
-									et.type = "OBJ_POINTER_ATTRIBUTE";
-									et.value = this.analysis(k+2, prev+getPointerType(o_word,prev)+"::", "pointer_attribute");
+									et.type = "OBJP_NUMBER";
+									et.value = this.analysis(k+2, prev+getPointerType(o_word,prev)+"::", "obj_number");
 									this.exprs.push(et);
 								} else if (getVariable(word, prev) != null) {
 									et = new Object();
 									et.type = "VAR";
-									et.value = getVariable(word);
+									et.value = this.rec.getVariable(word, prev);
 									this.exprs.push(et);
-								}
+								} else
+									return error(j, "'" + word + "' uncleared");
 							} else 
-								return error(j, "'" + word + "' uncleared");
+								return error(j, "'" + word + "' uncleared");		
 						}
 						switch (this.text[i]) {
 							case '(' :
@@ -272,6 +328,20 @@
 									et.type = "INC";   this.exprs.pop(); this.exprs.push(et);
 								} else if (this.text[i] == '-' && et.type == "MINUS") {
 									et.type = "DEC";   this.exprs.pop(); this.exprs.push(et);
+								} else if (this.text[i] == '=' && assignPrev(et.type) != null) {
+									et.type = assignPrev(et.type); this.exprs.pop(); this.exprs.push(et);
+								} else if (this.text[i] == '=' && et.type == "LESS") {
+									et.type = "NOMORE"; this.exprs.pop(); this.exprs.push(et);
+								} else if (this.text[i] == '=' && et.type == "MORE") {
+									et.type = "NOLESS"; this.exprs.pop(); this.exprs.push(et);
+								} else if (this.text[i] == '=' && et.type == "ASSIGN") {
+									et.type = "EQUAL"; this.exprs.pop(); this.exprs.push(et);
+								} else if (this.text[i] == '<' && et.type == "LESS") {
+									et.type = "SLL"; this.exprs.pop(); this.exprs.push(et);
+								} else if (this.text[i] == '>' && et.type == "MOVE") {
+									et.type = "SRL"; this.exprs.pop(); this.exprs.push(et);
+								} else if (this.text[i] == '>' && et.type == "SRL") {
+									et.type = "SRA"; this.exprs.pop(); this.exprs.push(et);
 								} else {
 									et = new Object();
 									et.type = op_type; 
@@ -285,77 +355,65 @@
 					et.text = exprs;
 					et.end = i;
 					return et;
+				
 				case "class" :
 					i = this.text.indexOf("[^\0]", i+6);
 					j = this.text.indexOf("[^0-9a-zA-Z]", i);
-					word = this.text.slice(i, j-1);
-					i = this.text.indexOf("[^\0]", j+1);
-					if (this.text[i] == '{') 
-						return this.analysis(i, prev+word+"::", "c_code");
-					else
-						return error(i, "Synatx error at '" + this.text[i] + "'");
+					word = this.text.slice(i, j);
+					j = this.text.indexOf("[^\0]", j);
+					if (this.text[j] == '{') {
+						et.type = "class";
+						et.text = this.analysis(i+1, prev+word+"::", "c_code");
+						et.name = word;
+						et.end = getEnd(et);
+						return et;
+					}
+					return error(j, "Synatx error at '" + this.text[j] + "'");
 				case "c_code" :
 					j = this.text.indexOf("[^0-9a-zA-Z]", i);
-					word = this.text.slice(i, j-1);
-					j = this.text.indexOf("[^\0]", j+1);
+					word = this.text.slice(i, j);
+					j = this.text.indexOf("[^\0]", j);
 					while (text[j] == '*') {
 						word += "*";
 						j = this.text.indexOf("[^\0]", j+1);
 					}
-					i = this.text.indexOf("[^\0]", j+1);
 					switch (word) {
-						case "class" : case "struct" :
-							et.type = "class";
-							et.prev = null;
-							et.text = this.analysis(i,        prev, "class");
-							et.end = et.text.end;
-							et.next = this.analysis(et.end+1, prev, "c_code");
-							et.next.prev = et;
-							return et;
-						case "private" : case "public" : case "protected" :
-							if (this.text[i] == ":") 
-								return this.analysis(i+1, prev, "c_code");
-							else
-								return error(i, "Synatx error at '" + this.text[j] + "'");
 						case "" :
-							switch (this.text[i]) {
-								case "#" : return error(i, "No support with #include / #define");
-								default :  return error(i, "Synatx error at '" + this.text[i] + "'");
+							switch (this.text[j]) {
+								case "}" : return null;
+								case "#" : return error(j, "No support with #include / #define");
+								default :  return error(j, "Synatx error at '" + this.text[j] + "'");
 							}
 						default : 
 							if (getType(word) != null) {
-								et.type = "type";
-								et.prev = null;
-								et.text = this.analysis(i, 		prev, "type");
-								et.text.s_type = word;
-								et.end = et.text.end;
+								et = this.analysis(j, prev, "type");
+								et.s_type = word;
 								et.next = this.analysis(et.end+1, prev, "c_code");
-								et.next.prev = et;
+								this.rec.setVariable(et);
 								return et;
 							} else
-								return error(j, "'" + word + "' uncleared");
-					}	
+								return error(i, "'" + word + "' uncleared");
+					}
 				case "type" :
 					if (!isAlpha(this.text[i])) 
 						return error(i, "Synatx error at '" + this.text[i] + "'");
 					j = this.text.indexOf("[^0-9a-zA-Z]", i);
-					word = this.text.slice(i, j-1);
+					word = this.text.slice(i, j);
 					switch (this.text[j]) {
 						case '=' : 
-							et.type = "v_def";
+							et.type = "var";
 							et.name = word;
 							et.value = this.analysis(j+1, prev, "expr");
 							et.end = et.value.end;
 							return et;
 						case ";" :
-							et.type = "v_def";
+							et.type = "var";
 							et.name = word;
-							et.variable = getVariable(prev+word);
 							et.value = null;
 							et.end = j;
 							return et;
 						case "(" :
-							et.type = "f_def";
+							et.type = "func";
 							et.name = word;
 							et.reg = this.analysis(j+1, prev, "f_reg");
 							i = this.text.indexOf("[^\0]", et.reg.end+1);
@@ -372,17 +430,17 @@
 					if (!isAlpha(this.text[i])) 
 						return error(i, "Synatx error at '" + this.text[i] + "'");
 					j = this.text.indexOf("[^0-9a-zA-Z]", i);
-					word = this.text.slice(i, j-1);
+					word = this.text.slice(i, j);
 					switch (this.text[j]) {
 						case ";" :
-							et.type = "v_def";
+							et.type = "var";
 							et.name = word;
-							et.variable = getVariable(prev+word);
 							et.value = null;
 							et.end = j;
+							this.rec.setVariable(et);
 							return et;
 						case "(" :
-							et.type = "f_def";
+							et.type = "func";
 							et.name = word;
 							et.reg = this.analysis(j+1, prev, "f_reg");
 							i = this.text.indexOf("[^\0]", et.reg.end+1);
@@ -398,7 +456,7 @@
 				case "f_reg" :
 					j = this.text.indexOf("[,)]", i);
 					k = this.text.indexOf("\0", i+1);
-					word = this.text.slice(i, k-1);
+					word = this.text.slice(i, k);
 					k = this.text.indexOf("[^\0]", k+1);
 					while (this.text[k] == '*') {
 						word += "*";
@@ -407,12 +465,11 @@
 					et.type = "f_reg";
 					et.s_type = word;
 					if (isAlpha(this.text[k])) {
-						i = k; k = this.text.lastIndexOf("[^\0"], j-1);
+						i = k; k = this.text.lastIndexOf("[^\0]", j-1);
 						et.name = this.text.slice(i, k);		
-						switch (text[j]) {
+						switch (this.text[j]) {
 							case "," :
 								et.next = this.analysis(j+1, prev, "f_reg");
-								et.next.prev = et;
 								et.end = et.next.end;
 								return et;
 							case ")" :
@@ -423,18 +480,115 @@
 								return error(j, "Synatx error at '" + this.text[j] + "'");
 						}
 					}
-				
-					
+				default:
+					return null;
+			}
 		}
+		
+		
 		// ==================================================================================
 		// 	Grammer Analysis
 		// ==================================================================================
-
+		
+		g_ana = new Object();
+		g_ana.analysis = function(et, prev) {
+			switch (et.type) {
+				case "class" :
+					this.typesize(et.text, prev+et.name);
+					return this.analysis(et.text, prev+et.name+"::");
+				case "var" :
+					this.analysis(et.value, prev);
+					type1 = et.s_type;
+					type2 = getType(et.value, prev);
+					if (!this.inherited(type1, type2))
+						return error(j, sprintf("initialization makes %s from %s without a cast", type1, type2)); 
+					return true;
+				case "func" :
+					prev += et.name + "::";
+					addr_ct = -4; 
+					for (e = et.reg ; e != null ; e = e.next) {
+						e.addr = addr_ct;
+						addr_ct -= this.sizeof[et.s_type];
+					}
+					return this.analysis(et.text, prev);
+				case "para" :
+					return this.analysis(et.text, prev);
+				case "expr" :
+					et.e_tree = this.create_expr_tree(et.exprs, 0, et.exprs.length);
+				case "if" :
+					this.analysis(et.cond,   prev);
+					this.analysis(et.stmt,   prev);
+					this.analysis(et.e_stmt, prev);
+					type1 = getType(et.cond, prev);
+					if (!convertType(type1, "bool"))
+						return this.error(et.end, sprintf("could not convert ‘%s’ from ‘%s’ to ‘bool’", et.cond.name, type1));
+					return true;
+				case "while" :
+					this.analysis(et.cond,   prev);
+					this.analysis(et.stmt,   prev);
+					type1 = getType(et.cond, prev);
+					if (!convertType(type1, "bool"))
+						return this.error(et.end, sprintf("could not convert ‘%s’ from ‘%s’ to ‘bool’", et.cond.name, type1));
+					return true;
+			}
+		}
+		
 		// ==================================================================================
 		// 	Instruction generate
 		// ==================================================================================
 		
-		alert("js accept!");
-	
+		// ==================================================================================
+		// 	User interface
+		// ==================================================================================
+		ui.rec = rec;
+		ui.w_ana = w_ana;
+		ui.g_ana = g_ana;
+		ui.load = function(filename, ls) {
+			ui.input_paused();
+			if (window.ActiveXObject) {
+				var fso = new ActiveXObject("Scripting.FileSystemObject");
+				var file = fso.GetFile(filename);
+				var reader = new FileReader();
+				reader.onload = function(e) {
+					this.rec.text = this.result;
+				}
+				reader.readAsText(file);
+			} else {
+				var xmlHttp = new XMLHttpRequest();
+				xmlHttp.open("GET", filename, false);
+				xmlHttp.send(null);
+				this.rec.text = xmlHttp.responseText;
+			}
+			println("complete reading c code '" + filename + "'");
+			ui.input_active();
+		}
+		ui.compile = function(asm, asmpath) {
+			ui.input_paused();
+			this.w_ana.text = this.rec.text;
+			var et = this.w_ana.analysis(0, "", "code");
+			ui.input_active();
+		}
+		ui.save = function(filename) {
+			ui.input_paused();
+			this.savepath = filename;
+			ui.input_active();
+		}
+		ui.input_paused = function() {
+			ctrl_active = false;
+		}
+		ui.input_active = function() {
+			ctrl_active = true;
+			print("uComplier >> ");	
+		}
+		
+		ui.input_paused();
+		println("Ucore C complier v1.0 (uComplier)");
+		println("Usage : load filepath [-ls] : Load the c source code");
+		println("			-ls : Print the code on the webpage screen.");
+		println("		 save filepath : Target the instruction code file's path(seem as 'Execute file')");
+		println("		 compile [-o [filepath]] : Compile the c code, and generate the instruction code");
+		println("			-o [filepath] : Save the assemble. Print it when filepath is ignored.");
+		ui.input_active();
+		
 	</script>
 </html>
