@@ -8,6 +8,7 @@
 		<div id="board"></div>
 	</body>
 	<script type="text/javascript">
+		var rec = new Object();
 		// ==================================================================================
 		// 	User Interface
 		// ==================================================================================
@@ -22,15 +23,20 @@
 		var line = 0, column = 0;
 		var text = "", cmd = "";
 		var ctrl_active = false;
+		var pause_active = false;
 		document.onkeypress = function(event) {
 			event = (event != null) ? event : window.event;
+			if (pause_active) {
+				pause_active = false;
+				return;	
+			}
 			if (!ctrl_active) return;
 			if (event.keyCode == 13) {
 				if (++line > 40) 
 					text = text.slice(text.indexOf("<br>")+4);
 				text = text + cmd + "<br>";
 				board.innerHTML = text;
-				if (cmd.slice(0, 4) == "load") 
+				if (cmd.slice(0, 4) == "load")
 					ui.load(cmd.slice(5));
 				else if (cmd.slice(0, 3) == "save")
 					ui.save(cmd.slice(5));
@@ -49,22 +55,46 @@
 			}
 		}
 		function print(str) {
-			text = text + str;
+			var s_tmp = "";
+			for (var i = 0 ; i < str.length ; i++)
+				if (str[i] == ' ') s_tmp += "&nbsp;";
+	 	   else if (str[i] == '\t')s_tmp += "&nbsp;&nbsp;&nbsp;&nbsp;";
+	 	   else if (str[i] == '$') {
+	 	   			if (i > 0 && str[i-1] == '\'' && i+1 < str.length && str[i+1] == '\'')
+	 	   				s_tmp += "EOF";
+	 	   			else
+	 	   				s_tmp += " ";
+	 	   	}  
+		   else s_tmp += str[i];
+			text = text + s_tmp;
 			board.innerHTML = text;
 		}
 		function println(str) {
+			if (arguments[1] != null) {
+				alert(arguments[1]);
+				str = "<a color="+arguments[1]+">"+str+"</a>";
+			}
 			if (++line > 40) 
 				text = text.slice(text.indexOf("<br>")+4);
-			text = text + str + "<br>";
+			var s_tmp = "";
+			for (var i = 0 ; i < str.length ; i++)
+				if (str[i] == ' ') s_tmp += "&nbsp;";
+	 	   else if (str[i] == '\t')s_tmp += "&nbsp;&nbsp;&nbsp;&nbsp;";
+	 	   else if (str[i] == '$') {
+	 	   			if (i > 0 && str[i-1] == '\'' && i+1 < str.length && str[i+1] == '\'')
+	 	   				s_tmp += "EOF";
+	 	   			else
+	 	   				s_tmp += " ";
+	 	   	}  
+		   else s_tmp += str[i];
+			text = text + s_tmp + "<br>";
 			board.innerHTML = text;
 			cmd = "";
 			column = 0;
 		}
-		
 		// ==================================================================================
 		// 	Reverse words
 		// ==================================================================================
-		/*
 		var rw = new Array("if", "then", "else", "do", "while", "for", 		  		   // condition structure
 			   	  		   "switch", "case", "default",								   // switch structure
 			      		   "break", "continue", "return", 					 		   // pause
@@ -73,24 +103,24 @@
 			      		   "const", "static", "unsigned", 				  			   // attribute
 			      		   "public", "private", "protected"						  	   // security
 		);
-		*/
 		// ==================================================================================
 		// 	keywords
 		// ==================================================================================
-		//var op = new Array("+", "-", "*", "/", "%", "&", "|", "^", "!", "~", 
-		//				   "<", ">", "?", ":", ",");								   // operator keyword
-		//var op_up = new Array("++", "--", "!", "~", "*", "-");						   // previous operator
-		//var op_us = new Array("++", "--");											   // succeed operator
-		//var op_b =  new Array("+", "-", "*", "/", "%", ",",
-		//					  "&", "|", "^", "&&", "||", "<", ">", "<<", ">>");	       // binary operator
-		//var op_as = new Array("=", "+=", "-=", "*=", "/=", "%=",
-		//					  "<<=", ">>=", "|=", "&=", "^=");						   // assign operator
-		//var op_r = {};														   		   // operator priority
-		//var br = new Array("(", ")", "[", "]", "{", "}", 
-		//				   "\'", "\'", "\"", "\"", "/*", "*/"); 					   // bracket
+		var op = new Array("+", "-", "*", "/", "%", "&", "|", "^", "!", "~", 
+						   "<", ">", "?", ":", ",");								   // operator keyword
+		var op_up = new Array("++", "--", "!", "~", "*", "-");						   // previous operator
+		var op_us = new Array("++", "--");											   // succeed operator
+		var op_b =  new Array("+", "-", "*", "/", "%", ",",
+							  "&", "|", "^", "&&", "||", "<", ">", "<<", ">>");	       // binary operator
+		var op_as = new Array("=", "+=", "-=", "*=", "/=", "%=",
+							  "<<=", ">>=", "|=", "&=", "^=");						   // assign operator
+		var op_r = {};														   		   // operator priority
+		var op_t = {};																   // operator type for etree
+		var br = new Array("(", ")", "[", "]", "{", "}", 
+						   "\'", "\'", "\"", "\"", "/*", "*/"); 					   // bracket
 		
-		/*
-		//op_r["["] = op_r["]"] = op_r["("] = op_r[")"] = op_r["."] = op_r["->"] = 1;
+		
+		op_r["["] = op_r["]"] = op_r["("] = op_r[")"] = op_r["."] = op_r["->"] = 1;
 		op_r["-up"] = op_r["++up"] = op_r["--up"] = op_r["++us"] = op_r["--us"] =
 	  	op_r["!up"] = op_r["~up"]  = op_r["*up"]  = op_r["&up"]  = 2;
 	  	op_r["*b"]  = op_r["/b"]   = op_r["%b"]   = 3;
@@ -108,25 +138,124 @@
 	  	op_r["/=as"]= op_r["%=as"] = op_r["<<=as"]= op_r[">>=as"]=
 	  	op_r["|=as"]= op_r["&=as"] = op_r["^=as"] = 14;
 	  	op_r[",b"] = 15;
-	  	*/
+	  	
+	  	op_t["+"] = "ADD";
+	  	op_t["-"] = "MINUS";
+	  	op_t["*"] = "MULT";
+	  	op_t["/"] = "DIV";
+	  	op_t["%"] = "MOD";
+	  	op_t["&"] = "AND";
+	  	op_t["|"] = "OR";
+	  	op_t["^"] = "XOR";
+	  	op_t["!"] = "NETZ";
+	  	op_t["~"] = "NOT";
+	  	op_t["<"] = "LESS";
+	  	op_t[">"] = "MORE";
+	  	op_t["="] = "ASSIGN";
+	  	op_t["?"] = "IF";
+	  	op_t[":"] = "THEN";
+	  	op_t[","] = "NEXT";
+	  	op_t["=="] = "EQUAL";
+	  	op_t["<="] = "NOTMORE";
+	  	op_t[">="] = "NOTLESS";
+	  	op_t["<<"] = "SLL";
+	  	op_t[">>"] = "SRL";
+	  	op_t[">>>"] = "SRA"; 
+	  	op_t["||"] = "BOOLOR";
+	  	op_t["&&"] = "BOOLAND";
+	  	op_t["++"] = "INC";
+	  	op_t["--"] = "DEC";
+	  	op_t["+="] = op_t["="] + op_t["+"];
+	  	op_t["-="] = op_t["="] + op_t["-"];
+	  	op_t["*="] = op_t["="] + op_t["*"];
+	  	op_t["/="] = op_t["="] + op_t["/"];
+	  	op_t["&="] = op_t["="] + op_t["&"];
+	  	op_t["|="] = op_t["="] + op_t["|"];
+	  	op_t["<<="] = op_t["="] + op_t["<<"];
+	  	op_t[">>="] = op_t["="] + op_t[">>"];
+	  	
+	  	function l_bracket(ch) {
+	  		for (var i = 0 ; i < br.length ; i += 2) 
+	  			if (br[i] == ch) return true;
+	  		return false;
+	  	}
+	  	function r_bracket(ch) {
+	  		for (var i = 1 ; i < br.length ; i += 2) 
+	  			if (br[i] == ch) return true;
+	  		return false;
+	  	}
+	  	
 		// ==================================================================================
 		// 	Record
 		// ==================================================================================
-		var rec = new Object();
 		rec.text = "";
+		rec.t_line = null;
+		rec.t_column = null;
 		rec.types = {};
 		rec.vars = {};
+		rec.brackets = 0;
 		rec.setType = function(et) {
 			this.types[et.name] = et;
 		}
 		rec.getType = function(name) {
+			for (var i = 12 ; i < 19 ; i++)
+				if (name == rw[i]) {
+					var ret = new Object();
+					ret.type = "basic";
+					ret.name = name;
+					ret.text = null;
+					return ret;
+				}
 			return this.types[name];
 		}
-		rec.setVariable = function(et) {
-			this.vars[et.name] = et;
+		rec.setVariable = function(et, prev) {
+			this.vars[prev+et.name] = et;
 		}
 		rec.getVariable = function(name) {
-			return this.vars[name];
+			var j = name.lastIndexOf("::");
+			if (j != -1)
+				var i = name.lastIndexOf("::", j-1)+2; 
+			if (i == 1) i = 0;
+			return (this.vars[name]!=null) ? this.vars[name] : (j == -1 ? null : this.getVariable(name.slice(0, i)+name.slice(j+2)));
+		}
+		rec.createBracket = function() {
+			return "b" + (++this.brackets);
+		}
+		rec.setText = function(text) {
+			this.text = text;
+			this.t_line = new Array(text.length);
+			this.t_column = new Array(text.length);
+			this.t_line[0] = 1;
+			this.t_column[0] = 1;
+			for (var i = 0 ; i < text.length-1; i++)
+				switch (this.text[i]) {
+					case '\n' : 
+						this.t_line[i+1] = this.t_line[i]+1;
+						this.t_column[i+1] = 1;
+						break;
+					default :
+						this.t_line[i+1] = this.t_line[i];
+						this.t_column[i+1] = this.t_column[i]+1;
+						break;
+				}
+		}
+		rec.printl = function(id) {
+			var label_id = 0;
+			while (id > 0 && this.text[id-1] != '\n') {
+				id--; label_id++;
+			}
+			var end = id;
+			while (end < this.text.length && this.text[end] != '\n') end++;
+			var line = this.text.slice(id, end), label = "";
+			println(line);
+			for (var i = 0 ; i < line.length ; i++)
+				if (i == label_id)
+					label += '^';
+				else if (line[i] != ' ' && line[i] != '\t')
+					label += ' ';
+				else
+					label += line[i];
+			println(label);
 		}
 		// ==================================================================================
 		// 	Word Analysis
@@ -134,408 +263,1029 @@
 		var w_ana = new Object();
 		w_ana.text = "";
 		w_ana.rec = rec;
+		w_ana.error = function(id, msg) {
+			println("[" + this.rec.t_line[id] + "," + this.rec.t_column[id] + "] : " + msg);
+			this.rec.printl(id);
+			var et = new Object();
+			et.msg = msg;
+			et.type = "error";
+			et.end = this.text.length;
+			return et;
+		}
+		w_ana.spaceskip = function(start) {
+			var i;
+			for (i = start ; this.text[i] == ' ' || this.text[i] == '\t' || this.text[i] == '\n'; i++) ;
+			return i;
+		}
+		w_ana.alphaskip = function(start) {
+			var i;
+			for (i = start ; /[0-9A-Za-z]/.test(this.text.slice(i, i+1)) ; i++);
+			return i;
+		}
+		w_ana.isEndCode = function(ch, type) {
+			switch (type) {
+				case "expr" : return (ch==')')||(ch==']')||(ch==';')||(ch==',');
+				case "stmt" : return (ch==';');
+				case "para" : case "c_code" : return (ch=='}');
+				default : return ch==null;
+			}
+		}
+		w_ana.getEnd = function(et) {
+			//println("getEnd et.type="+et.type + " et.end="+et.end);
+			return (et.next != null) ? this.getEnd(et.next) : et.end;
+		}
+		w_ana.empty_tree = function(end) {
+			var et = new Object();
+			et.type = "empty";
+			et.end = end;
+			return et;
+		}
 		w_ana.analysis = function(start, prev, type) {
 			var et = new Object();
 			var i = start, j = start, k = start;
 			var word = null;
-			i = this.text.indexOf("[^\0]", i);
-			if (this.text[i] == '\n') 
-				return this.analysis(1, prev, type);
+			if (start >= this.text.length)
+				return empty_tree(this.text.length);
+			if (type != "string" && type != "char")
+				i = this.spaceskip(i);
+			if (this.text.slice(start, start+2) == "//") {
+				i = this.text.indexOf("\n", start);
+				if (i == -1) return this.error(this.text.length, "Excepted '\\n'"); 
+				return this.analysis(i+1, prev, type);
+			}	
+			if (this.text.slice(start, start+2) == "/*") {
+				i = this.text.indexOf("*/", start); 
+				if (i == -1) return this.error(this.text.length, "Excepted '*/'");
+				return this.analysis(i+2, prev, type);
+			}
+			if (i >= this.text.length)
+				return empty_tree(this.text.length);
+			//println("word analysis start=" + i + ", prev=" + prev + ", type=" + type + " head=" + this.text.slice(i, i+2));
+			//if (this.text[i] == '\n')
+			//	return this.analysis(start+1, prev, type);
 			switch (type) {
 				case "code" :
-					j = this.text.indexOf("[^0-9a-zA-Z]", i);
+					j = this.alphaskip(i);
 					word = this.text.slice(i, j);
-					j = this.text.indexOf("[^\0]", j);
-					while (text[j] == '*') {
-						word += "*";
-						j = this.text.indexOf("[^\0]", j+1);
-					}
+					j = this.spaceskip(j);
+					//println("type=code word=" + word);	
 					switch (word) {
 						case "struct" :
 							et 		= this.analysis(j, 		  prev, "class");
+							if (et.type == "error")
+								return et;
 							et.next = this.analysis(et.end+1, prev, "code");
+							if (et.next.type == "error")
+								return et.next;
 							this.reg.setType(et);
 							return et;
 						case "" :
 							switch (this.text[j]) {
-								case "#" : return error(j, "No support with #include / #define");
-								default :  return error(j, "Synatx error at '" + this.text[j] + "'");
+								case "$" : return this.empty_tree(j);
+								case "#" : return this.error(j, "No support with #include / #define");
+								default :  return this.error(j, "Synatx error at '" + this.text[j] + "'");
 							}
 						default : 
-							if (getType(word) != null) {
-								et = this.analysis(j, prev, "type");
-								et.s_type = word;
-								et.next = this.analysis(et.end+1, prev, "code");
-								this.rec.setVariable(et);
+							et = this.analysis(j, prev, "type");
+							if (et.type == "error")
 								return et;
-							} else
-								return error(i, "'" + word + "' uncleared");
+							while (et.next != null && et.next.type != "empty") {
+								if (et.type == "empty")
+									continue; 
+								et.s_type = word + et.s_type;
+								this.rec.setVariable(et, prev);
+								et = et.next;
+							}
+							et.s_type = word + et.s_type;
+							this.rec.setVariable(et, prev);
+							//println("type end at " + et.end + " text="+this.text[et.end]);
+							if (this.rec.getType(word) == null) {
+								var tmp = et.end;
+								et = this.error(i, "'" + word + "' uncleared");
+								et.end = tmp;
+							}
+							et.next = this.analysis(et.end+1, prev, "code");
+							if (et.next.type == "error")
+								return et.next;
+							return et;
 					}
 				case "para" :
 					if (this.text[i] == '}') 
-						return null;
+						return this.empty_tree(i);
 					et 		= this.analysis(i,        prev, "stmt");
+					if (et.type == "empty")
+						return et;
+					if (et.type == "error") {
+						if (et.msg == "Synatx error at '$'")
+							return this.error(i, "Excepted '}'");
+						et.end = this.text.indexOf("}", i);
+						if (i == -1)
+							return this.error(this.text.length-1, "Excepted '}'");
+						return this.empty_tree(i);
+					}
 					et.next = this.analysis(et.end+1, prev, "para");
-					if (et.next != null) {
-						et.end = et.next.end;
-						et.next.prev = et;
-					} else
-						et.end = et.stmt.end+1;
+					if (et.next.type == "error")
+						return et.next;
 					return et;
 				case "stmt" :
-					j = this.text.indexOf("[^0-9a-zA-Z]", i);
+					j = this.alphaskip(i);
 					word = this.text.slice(i, j);
-					j = this.text.indexOf("[^\0]", j+1);
+					j = this.spaceskip(j);
+					//println("type=stmt word="+word+" i="+i+" j="+j+" text[j]="+this.text[j]);
 					switch (word) {
 						case "" :
 							switch (this.text[j]) {
 								case '{': 
 									et.type = "para";
-									et.para = this.analysis(i, prev, "para");
+									et.bracket = this.rec.createBracket();
+									et.para = this.analysis(j+1, prev+et.bracket+"::", "para");
+									if (et.para.type == "error")
+										return et.para;
+									et.end = this.getEnd(et.para);
+									if (this.text[et.end] != '}')
+										return this.error(et.end, "Synatx error at '" + this.text[et.end] + "'");
 									return et;
+								case '}':
+									return this.empty_tree(j);
 								default:
-									return error(j, "Synatx error at '" + this.text[j] + "'");
+									return this.error(j, "Synatx error at '" + this.text[j] + "'");
 							}
 						case "if" :
 							et.type = "if";
-							if (text[j] == '(') 
+							if (this.text[j] == '(') 
 								et.cond = this.analysis(j+1, prev, "expr");
 							else
-								return error(j, "Synatx error at '" + text[j] + "'");
-							i = this.text.indexOf("[^\0]", et.cond.end+1);
+								return this.error(j, "Synatx error at '" + this.text[j] + "'");
+							if (et.cond.type == "error")
+								return et.cond;
+							i = this.spaceskip(et.cond.end+1);
 							et.stmt = this.analysis(i, prev, "stmt");
-							i = this.text.indexOf("[^\0]", et.stmt.end+1);
+							if (et.stmt.type == "error")
+								return et.stmt;
+							i = this.spaceskip(et.stmt.end+1);
 							if (this.text.slice(i, i+4) == "else") {
 								et.e_stmt = this.analysis(i, prev, "stmt");
 								et.end = et.e_stmt.end;
-							} else 
-								et.e_stmt = null;
+							} else {
+								et.e_stmt = this.empty_tree(et.stmt.end);
 								et.end = et.stmt.end;
+							}
+							if (et.e_stmt.type == "error") 
+								return et.e_stmt;
 							return et;
 						case "while" :
 							et.type = "while";
-							if (text[j] == '(') 
-								et.cond = this.analysis(i+1, prev, "expr");
+							if (this.text[j] == '(') 
+								et.cond = this.analysis(j+1, prev, "expr");
 							else
-								return error(i, "Synatx error at '" + text[j] + "'");
-							i = this.text.indexOf("[^\0]", et.cond.end+1);
+								return this.error(i, "Synatx error at '" + this.text[j] + "'");
+							if (et.cond.type == "error")
+								return et.cond;
+							i = this.spaceskip(et.cond.end+1);
 							et.stmt = this.analysis(i, prev, "stmt");
+							if (et.stmt.type == "error")
+								return et.stmt;
 							et.end = et.stmt.end;
+							return et;
+						case "for" :
+							et.type = "for";
+							if (this.text[j] == '(')
+								et.s_expr = this.analysis(j+1, prev, "expr");
+							else
+								return this.error(j, "Synatx error at '" + this.text[j] + "'");
+							if (et.s_expr.type == "error")
+								return et.s_expr;
+							i = et.s_expr.end;
+							if (this.text[i] == ';')
+								et.c_expr = this.analysis(i+1, prev, "expr");
+							else
+								return this.error(i, "Synatx error at '" + this.text[i] + "'");
+							if (et.c_expr.type == "error")
+								return et.c_expr;
+							i = et.c_expr.end;
+							if (this.text[i] == ';')
+								et.e_expr = this.analysis(i+1, prev, "expr");
+							else
+								return this.error(i, "Synatx error at '" + this.text[i] + "'");
+							if (et.e_expr.type == "error")
+								return et.e_expr;
+							i = et.e_expr.end;
+							if (this.text[i] != ')')  
+								return this.error(i, "Synatx error at '" + this.text[i] + "'");
+							et.stmt = this.analysis(i+1, prev, "stmt");
+							if (et.stmt.type == "error")
+								return et.stmt;
+							et.end = et.stmt.end;
+							return et;
+						case "switch" :
+							if (this.text[j] != '(')
+								return this.error(j, "Except '(' after 'switch'");
+							et.expr = this.analysis(j+1, prev, "expr");
+							j = this.spaceskip(et.expr.end+1);
+							if (this.text[j] != '{')
+								return this.error(j, "Except '{' after 'switch'");
+							et.bracket = this.rec.createBracket();
+							et.text = this.analysis(j+1, prev+et.bracket+"::", "s_code");
+							if (et.text.type == "error")
+								return et.text;
+							et.end = this.getEnd(et.text);
 							return et;
 						case "return" :
 							et.type = "return";
-							et.value = this.analysis(i, prev, "expr");
+							if (j == ';') {
+								et.value = this.empty_tree(j);
+								et.end = j;
+								return et;
+							}
+							et.value = this.analysis(j, prev, "expr");
+							et.end = et.value.end;
+							return et;
+						case "break" :
+							et.type = "break";
+							et.end = j;
+							return et;
+						case "continue" :
+							et.type = "continue";
+							et.end = j;
 							return et;
 						default :
-							if (getType(word) != null) {
-								et.prev = null;
+							if (this.rec.getType(word) != null) {
 								et = this.analysis(j, prev, "type");
-								et.s_type = word;
+								if (et.type == "error")
+									return et;
+								while (et.next != null && et.next.type != "empty") { 
+									et.s_type = word + et.s_type;
+									this.rec.setVariable(et, prev);
+									et = et.next;
+								}
+								et.s_type = word + et.s_type;
+								this.rec.setVariable(et, prev);
 								return et;
 							}
 							return this.analysis(i, prev, "expr");
 					}
-				case "expr" :
-					j = this.text.indexOf("[^0-9a-zA-Z]", i);
+				case "const" :
+					if (this.text[i] == '\'')
+						return this.analysis(i, prev, "char");
+					j = this.alphaskip(i);
 					word = this.text.slice(i, j);
-					i = this.text.indexOf("[^\0]", j+1);
-					this.exprs = new Array();
-					while (this.text[i] != ')' && this.text[i] != ';' && this.text[i] != ']') {
+					et.end = i+word.length-1;
+					if (word.length == 0)
+						return this.error(i, "Excepted constant");
+					if (word.search("^[0-9]+$") != -1) {
+						et = new Object();
+						et.type = "CONST";
+						et.s_type = "INT";
+						et.value = parseInt(word);
+					} else if (word.search("^[0-9]+/.[0-9]+$") != -1) {
+						et = new Object();
+						et.type = "CONST";
+						et.s_type = "FLOAT";
+						et.value = parseFloat(word);	
+					} else if (word.search("^0x[0-9a-fA-F]+$") != -1) {
+						et = new Object();
+						et.type = "CONST";
+						et.s_type = "INT";
+						et.value = parseHex(word);
+					} else {
+						var tmp = et.end;
+						et = this.error(i, "'" + word + "' is not a constant");
+						et.end = tmp;
+					}
+					return et;
+				case "expr" :
+					j = this.alphaskip(i);
+					word = this.text.slice(i, j);
+					j = this.spaceskip(j);
+					var exprs = new Array();
+					while (true) {
+						//println("type=expr word="+word+" i="+i+" j="+j+" text[j]="+this.text[j]);
 						if (word != "") {
-							if (word.indexOf("^[0-9]+$") != -1) {
+							if (word.search("^[0-9]+$") != -1) {
 								et = new Object();
 								et.type = "CONST";
-								et.s_type = "INT";
-								et.value = String.parseInt(word);
-								this.exprs.push(et);
-							} else if (word.indexOf("^[0-9]+/.[0-9]+$") != -1) {
+								et.s_type = "int";
+								et.value = parseInt(word);
+								exprs.push(et);
+							} else if (word.search("^[0-9]+/.[0-9]+$") != -1) {
 								et = new Object();
 								et.type = "CONST";
-								et.s_type = "FLOAT";
-								et.value = String.parseFloat(word);	
-								this.exprs.push(et);
-							} else if (word.indexOf("^0x[0-9a-fA-F]+$") != -1) {
+								et.s_type = "float";
+								et.value = parseFloat(word);	
+								exprs.push(et);
+							} else if (word.search("^0x[0-9a-fA-F]+$") != -1) {
 								et = new Object();
 								et.type = "CONST";
-								et.s_type = "INT";
+								et.s_type = "float";
 								et.value = parseHex(word);
-								this.exprs.push(et);
-							} else if (isAlpha(word[0])) {
-								if (this.text.slice(i, i+2) == "()") {
-									et = new object();
-									et.type = "FUNC";
-									et.value = this.rec.getVariable(word, prev);
-									this.exprs.push(et);
-									i += 2;
-								} else if ((k=word.indexOf("/.")) != -1) {
-									o_word = this.text.slice(i, k-1);
-									if (getVariable(o_word, prev) == null)
-										return error(j, "'" + word + "' uncleared");
+								exprs.push(et);
+							} else if (/[A-Za-z]/.test(word.slice(0, 1))) {
+								if ((k=word.search("/.")) != -1) {
+									o_word = this.text.slice(i, i+k);
+									if (this.rec.getVariable(prev+o_word) == null)
+										return this.error(i, "'" + word + "' uncleared");
 									et = new Object();
 									et.type = "OBJ_NUMBER";
-									et.value = this.analysis(k+1, prev+getType(o_word,prev)+"::", "obj_number");
-									this.exprs.push(et);
-								} else if ((k=word.indexOf("->")) != -1) {
-									o_word = this.text.slice(i, k);
-									if (getVariable(o_word, prev) == null)
-										return error(j, "'" + word + "' uncleared");
+									et.value = this.analysis(i+k+1, prev+this.getType(o_word,prev)+"::", "obj_number");
+									//if (et.value.type == "error")
+									//	return et.value;
+									j = et.end+1;
+									exprs.push(et);
+								} else if ((k=word.search("->")) != -1) {
+									o_word = this.text.slice(i, i+k);
+									if (this.rec.getVariable(prev+o_word) == null)
+										return this.error(j, "'" + word + "' uncleared");
 									et = new Object();
 									et.type = "OBJP_NUMBER";
-									et.value = this.analysis(k+2, prev+getPointerType(o_word,prev)+"::", "obj_number");
-									this.exprs.push(et);
-								} else if (getVariable(word, prev) != null) {
+									et.value = this.analysis(i+k+2, prev+this.getPType(o_word,prev)+"::", "obj_number");
+									//if (et.value.type == "error")
+									//	return et.value;
+									j = et.end+1;
+									exprs.push(et);
+								} else if (this.text[j] == '(') {
+									et = new Object();
+									et.type = "FUNC";
+									et.reg = this.analysis(j+1, prev, "fc_reg");
+									if (et.reg.type == "error")
+										return et.reg;
+									et.value = this.rec.getVariable(prev+word);
+									if (et.value == null) {
+										if (this.rec.getType(word) != null) {
+											et.type = "CONVFUNC";
+											et.s_type = this.rec.getType(word);
+										} else
+											et.value = this.error(i, "'" + word + "' uncleared");
+									}
+									et.end = this.getEnd(et.reg);
+									j = et.end+1;
+									exprs.push(et);
+								} else if (this.rec.getType(word) != null) {
+									et = new Object();
+									et.type = "CONV";
+									et.s_type = word;
+									et.end = j;
+									while (this.text[j] == '*') {
+										word += '*';
+										j = this.spaceskip(j+1);
+									}
+									exprs.push(et);
+								} else if (this.rec.getVariable(prev+word) != null) {
 									et = new Object();
 									et.type = "VAR";
-									et.value = this.rec.getVariable(word, prev);
-									this.exprs.push(et);
+									et.value = this.rec.getVariable(prev+word);
+									exprs.push(et);
 								} else
-									return error(j, "'" + word + "' uncleared");
+									return this.error(j, "'" + word + "' uncleared");
 							} else 
-								return error(j, "'" + word + "' uncleared");		
+								return this.error(j, "'" + word + "' uncleared");		
 						}
-						switch (this.text[i]) {
+						if (this.isEndCode(this.text[j], "expr")) break;
+						switch (this.text[j]) {
 							case '(' :
-								et = this.analysis(i+1, prev, "expr");
+								et = this.analysis(j+1, prev, "expr");
 								i = et.end+1;
-								this.exprs.push(et);
+								exprs.push(et);
 								break;
-							case '\'' : 
-								et = this.analysis(i+1, prev, "char");
+							case '\'' :
+								et = this.analysis(j+1, prev, "char");
 								i = et.end+1;
-								this.exprs.push(et);
+								exprs.push(et);
 								break;
 							case '\"' :
-								et = this.analysis(i+1, prev, "string");
+								et = this.analysis(j+1, prev, "string");
 								i = et.end+1;
-								this.exprs.push(et);
+								exprs.push(et);
 								break;
 							case '[' :
 								et.type = "OFFSET";
-								et.value = this.analysis(i+1, prev, "expr");
+								et.value = this.analysis(j+1, prev, "expr");
+								if (et.value.type == "error")
+									return et.value;
 								et.end = et.value.end;
 								i = et.end+1;
-								this.exprs.push(et);
+								exprs.push(et);
 								break;
 							default :
-								op_type = getOperType(this.text[i]);
-								if (op_type == null) 
-									return error(i, "Synatx error at '" + this.text[i] + "'");
-								if (this.text[i] == '&' && et.type == "I_AND") {
-									et.type = "B_AND"; this.exprs.pop(); this.exprs.push(et);
-								} else if (this.text[i] == '|' && et.type == "I_OR") {
-									et.type = "B_OR";  this.exprs.pop(); this.exprs.push(et); 
-								} else if (this.text[i] == '+' && et.type == "ADD") {
-									et.type = "INC";   this.exprs.pop(); this.exprs.push(et);
-								} else if (this.text[i] == '-' && et.type == "MINUS") {
-									et.type = "DEC";   this.exprs.pop(); this.exprs.push(et);
-								} else if (this.text[i] == '=' && assignPrev(et.type) != null) {
-									et.type = assignPrev(et.type); this.exprs.pop(); this.exprs.push(et);
-								} else if (this.text[i] == '=' && et.type == "LESS") {
-									et.type = "NOMORE"; this.exprs.pop(); this.exprs.push(et);
-								} else if (this.text[i] == '=' && et.type == "MORE") {
-									et.type = "NOLESS"; this.exprs.pop(); this.exprs.push(et);
-								} else if (this.text[i] == '=' && et.type == "ASSIGN") {
-									et.type = "EQUAL"; this.exprs.pop(); this.exprs.push(et);
-								} else if (this.text[i] == '<' && et.type == "LESS") {
-									et.type = "SLL"; this.exprs.pop(); this.exprs.push(et);
-								} else if (this.text[i] == '>' && et.type == "MOVE") {
-									et.type = "SRL"; this.exprs.pop(); this.exprs.push(et);
-								} else if (this.text[i] == '>' && et.type == "SRL") {
-									et.type = "SRA"; this.exprs.pop(); this.exprs.push(et);
-								} else {
-									et = new Object();
-									et.type = op_type; 
-									this.exprs.push(et);
-								}
+								op_type = op_t[this.text.slice(j, j+3)];
+								if (op_type == null)
+									op_type = op_t[this.text.slice(j, j+2)];
+								else if (i < j+3)
+									i = j+3;
+								if (op_type == null)
+									op_type = op_t[this.text.slice(j, j+1)];
+								else if (i < j+2)
+									i = j+2;
+								if (op_type == null)
+									return this.error(j, "Synatx error at '" + this.text[j] + "'");
+								else if (i < j+1)
+									i = j+1;
+								et.type = op_type;
+								et.end = i;
+								exprs.push(et);
 								break;
 						}
+						if (et.type == "error")
+							return et;
+						i = this.spaceskip(i)-1;
+						j = this.alphaskip(i+1);
+						word = this.text.slice(i+1, j);
+						j = this.spaceskip(j);
+					}
+					//println("end at j="+j+" text[j]="+this.text[j]);
+					if (exprs.length == 1 && exprs[0].type == "CONV") {
+						exprs[0].end = j;
+						return exprs[0];
 					}
 					et = new Object();
 					et.type = "expr";
 					et.text = exprs;
-					et.end = i;
+					et.end = j;
 					return et;
-				
+				case "string" :
+					for (j = i; this.text[j] != '"' ; j++)
+						if (this.text[j] == '\\') j++;
+					et.type = "string";
+					et.value = j;
+					et.end = j;
+					return et;
+				case "char" :
+					et.type = "char";
+					if (this.text[i+1] == '\'')
+						et.value = '\0';
+					else {
+						if (this.text[i+1] == '\\') i++;
+						et.value = this.text[i+1];
+						if (this.text[i+2] != '\'')
+							return this.error(i+2, "Synatx error at '" + this.text[j] + "'");
+					}
+					et.end = i+2;
+					return et;
 				case "class" :
-					i = this.text.indexOf("[^\0]", i+6);
-					j = this.text.indexOf("[^0-9a-zA-Z]", i);
+					j = this.alphaskip(i);
 					word = this.text.slice(i, j);
-					j = this.text.indexOf("[^\0]", j);
+					j = this.spaceskip(j);
 					if (this.text[j] == '{') {
 						et.type = "class";
 						et.text = this.analysis(i+1, prev+word+"::", "c_code");
+						if (et.text.type == "error")
+							return et.text;
 						et.name = word;
-						et.end = getEnd(et);
+						et.end = this.getEnd(et.text)+1;
+						while (this.text[et.end] != '}') et.end++;
 						return et;
 					}
-					return error(j, "Synatx error at '" + this.text[j] + "'");
+					return this.error(j, "Synatx error at '" + this.text[j] + "'");
 				case "c_code" :
-					j = this.text.indexOf("[^0-9a-zA-Z]", i);
+					j = this.alphaskip(i);
 					word = this.text.slice(i, j);
-					j = this.text.indexOf("[^\0]", j);
-					while (text[j] == '*') {
-						word += "*";
-						j = this.text.indexOf("[^\0]", j+1);
-					}
+					j = this.spaceskip(j);
 					switch (word) {
 						case "" :
 							switch (this.text[j]) {
-								case "}" : return null;
-								case "#" : return error(j, "No support with #include / #define");
-								default :  return error(j, "Synatx error at '" + this.text[j] + "'");
+								case "}" : return this.empty_tree(j);
+								case "#" : return this.error(j, "No support with #include / #define");
+								default :  return this.error(j, "Synatx error at '" + this.text[j] + "'");
 							}
 						default : 
 							if (getType(word) != null) {
 								et = this.analysis(j, prev, "type");
-								et.s_type = word;
+								if (et.type == "error")
+									return et;
+								while (et.next != null && et.next.type != "empty") {
+									et.s_type = word + et.s_type;
+									this.rec.setVariable(et, prev);
+									et = et.next;
+								}
+								et.s_type = word + et.s_type;
+								this.rec.setVariable(et, prev);
 								et.next = this.analysis(et.end+1, prev, "c_code");
-								this.rec.setVariable(et);
+								if (et.next.type == "error")
+									return et.next;
 								return et;
 							} else
-								return error(i, "'" + word + "' uncleared");
+								return this.error(i, "'" + word + "' uncleared");
 					}
-				case "type" :
-					if (!isAlpha(this.text[i])) 
-						return error(i, "Synatx error at '" + this.text[i] + "'");
-					j = this.text.indexOf("[^0-9a-zA-Z]", i);
+				case "s_code" :
+					j = this.alphaskip(i);
 					word = this.text.slice(i, j);
+					j = this.spaceskip(j);
+					switch (word) {
+						case "" :
+							if (this.text[j] == '}')
+								return this.empty_tree(j);
+							return this.error(j, "Synatx error at '" + this.text[i] + "'");
+						case "case" :
+							et.type = "case";
+							et.expr = this.analysis(j, prev, "const");
+							if (et.expr.type == "error")
+								return et.expr;
+							et.end = this.spaceskip(et.expr.end+1);
+							//println("s_code case b1");
+							if (this.text[et.end] != ':')
+								return this.error(et.end, "Excepted ':' after 'case'");
+							//println("s_code case b2");
+							break;
+						case "default" :
+							if (this.text[j] != ':')
+								return this.error(j, "Excepted ':' after 'default'");
+							et.type = "default";
+							et.end = j;
+							break;
+						default : 
+							et = this.analysis(i, prev, "stmt");
+							if (et.type == "error")
+								return et;
+							if (et.type == "var" || et.type == "func") {
+								var tmp = et.end;
+								et = this.error(j, "a label can only be part of a statement and a declaration is not a statement");
+								et.end = tmp;
+							}
+							break;
+					}
+					et.next = this.analysis(et.end+1, prev, "s_code");
+					if (et.next == "error")
+						return et.next;
+					return et;
+				case "type" :
+					et.s_type = "";
+					while (this.text[i] == '*') {
+						et.s_type += "*";
+						i = this.spaceskip(i+1);
+					}
+					if (/[A-Za-z]/.test(this.text.slice(i, i+1)) == false)
+						return this.error(i, "Synatx error at '" + this.text[i] + "'");
+					j = this.alphaskip(i);
+					word = this.text.slice(i, j);
+					j = this.spaceskip(j);
+					//println("type=type word=" + word + " j=" + j);
 					switch (this.text[j]) {
 						case '=' : 
 							et.type = "var";
 							et.name = word;
 							et.value = this.analysis(j+1, prev, "expr");
+							if (et.value.type == "error")
+								return et.value;
 							et.end = et.value.end;
+							switch (this.text[et.end]) {
+								case ',' : et.next = this.analysis(et.end+1, prev, "type"); break;
+								case ';' : et.next = this.empty_tree(et.end); break;
+								default  : return this.error(i, "Synatx error at '" + this.text[i] + "'");
+							}
+							if (et.next.type == "error")
+								return et.next;
 							return et;
-						case ";" :
+						case ';' :
 							et.type = "var";
 							et.name = word;
-							et.value = null;
+							et.value = this.empty_tree(j);
 							et.end = j;
 							return et;
-						case "(" :
+						case ',' :
+							et.type = "var";
+							et.name = word;
+							et.value = this.empty_tree(j);
+							et.end = j;
+							et.next = this.analysis(j+1, prev, "type");
+							if (et.next.type == "error")
+								return et.next;
+							return et;
+						case '(' :
 							et.type = "func";
 							et.name = word;
 							et.reg = this.analysis(j+1, prev, "f_reg");
-							i = this.text.indexOf("[^\0]", et.reg.end+1);
-							switch (this.text[i]) {
-								case ';' : et.text = null; et.end = i; break;
-								case '{' : et.text = this.analysis(i+1, prev, "stmt"); et.end = et.text.end; break;
-								default : return error(j, "Synatx error at '" + this.text[i] + "'");
+							if (et.reg.type == "error")
+								return et.reg;
+							for (var er = et.reg ; er != null ; er = er.next) {
+								if (et.type == "empty") continue;
+								this.rec.setVariable(er, prev);
 							}
+							i = (et.reg != null) ? this.spaceskip(this.getEnd(et.reg)+1) : this.spaceskip(this.spaceskip(j+1)+1);
+							switch (this.text[i]) {
+								case ';' : et.text = this.empty_tree(i); et.end = i; break;
+								case '{' : et.text = this.analysis(i+1, prev+et.name+"::", "para"); et.end = this.getEnd(et.text)+1; break;
+								default : return this.error(i, "Synatx error at '" + this.text[i] + "'");
+							}
+							if (et.text.type == "error")
+								return et.text;
 							return et;
 						default :
-							return error(j, "Synatx error at '" + this.text[j] + "'");
-					}
-				case "c_type" :
-					if (!isAlpha(this.text[i])) 
-						return error(i, "Synatx error at '" + this.text[i] + "'");
-					j = this.text.indexOf("[^0-9a-zA-Z]", i);
-					word = this.text.slice(i, j);
-					switch (this.text[j]) {
-						case ";" :
-							et.type = "var";
-							et.name = word;
-							et.value = null;
-							et.end = j;
-							this.rec.setVariable(et);
-							return et;
-						case "(" :
-							et.type = "func";
-							et.name = word;
-							et.reg = this.analysis(j+1, prev, "f_reg");
-							i = this.text.indexOf("[^\0]", et.reg.end+1);
-							switch (this.text[i]) {
-								case ';' : et.text = null; et.end = i; break;
-								case '{' : et.text = this.analysis(i+1, prev, "stmt"); et.end = et.text.end; break;
-								default : return error(j, "Synatx error at '" + this.text[i] + "'");
-							}
-							return et;
-						default :
-							return error(j, "Synatx error at '" + this.text[j] + "'");
+							return this.error(j, "Synatx error at '" + this.text[j] + "'");
 					}
 				case "f_reg" :
-					j = this.text.indexOf("[,)]", i);
-					k = this.text.indexOf("\0", i+1);
+					var b_ct = 1;
+					for (j = i ; b_ct > 0 ; j++) {
+						if (this.text[j] == '\"') b_ct = b_ct^(1<<14);
+						if (this.text[j] == '\'') b_ct = b_ct^(1<<15);
+						if (l_bracket(this.text[j])) b_ct++;
+						if (r_bracket(this.text[j]) || (this.text[j] == ',' && b_ct == 1)) b_ct--;
+						println("text="+this.text[j]+" b_ct="+b_ct);
+						if (b_ct <= 0) break;
+					}
+					k = this.alphaskip(i);
 					word = this.text.slice(i, k);
-					k = this.text.indexOf("[^\0]", k+1);
+					k = this.spaceskip(k);
+					if (word.length == 0) 
+						return this.empty_tree(j);
+					et.type = "f_reg";
+					if (this.rec.getType(word) == null)
+						et = this.error(i, "'" + et.s_type + "' uncleared");
 					while (this.text[k] == '*') {
 						word += "*";
-						k = this.text.indexOf("[^\0]", k+1);
+						k = this.spaceskip(k+1);
 					}
-					et.type = "f_reg";
 					et.s_type = word;
-					if (isAlpha(this.text[k])) {
-						i = k; k = this.text.lastIndexOf("[^\0]", j-1);
-						et.name = this.text.slice(i, k);		
-						switch (this.text[j]) {
-							case "," :
-								et.next = this.analysis(j+1, prev, "f_reg");
-								et.end = et.next.end;
-								return et;
-							case ")" :
-								et.next = null;
-								et.end = j;
-								return et;
-							default :
-								return error(j, "Synatx error at '" + this.text[j] + "'");
-						}
+					//println("type=f_reg word=" + word + " i=" + i + " j=" + j + " k=" + k); 
+					if (/[A-Za-z]/.test(word.slice(0, 1)) == false) 
+						return this.error(k, "Synatx error at '" + this.text[k] + "'");
+					if (/[A-Za-z]/.test(this.text.slice(k, k+1)) == false) 
+						return this.error(k, "Synatx error at '" + this.text[k] + "'");
+					i = k; k = j-1;
+					while (this.text[k] == ' ') k--;
+					et.name = this.text.slice(i, k+1);
+					switch (this.text[j]) {
+						case "," :
+							et.next = this.analysis(j+1, prev, "f_reg");
+							if (et.next.type == "error")
+								return et.next;
+							et.end = et.next.end;
+							return et;
+						case ")" :
+							et.next = this.empty_tree(j);
+							et.end = j;
+							return et;
+						default :
+							return this.error(j, "Synatx error at '" + this.text[j] + "'");
 					}
+				case "fc_reg" :
+					var b_ct = 1;
+					for (j = i ; b_ct > 0 ; j++) {
+						if (this.text[j] == '\"') b_ct = b_ct^(1<<14);
+						if (this.text[j] == '\'') b_ct = b_ct^(1<<15);
+						if (l_bracket(this.text[j])) b_ct++;
+						if (r_bracket(this.text[j]) || (this.text[j] == ',' && b_ct == 1)) b_ct--;
+						//println("text="+this.text[j]+" b_ct="+b_ct);
+						if (b_ct <= 0) break;
+					}
+					var tmp = this.text[j]; 
+					this.text[j] = ')';
+					et = this.analysis(i, prev, "expr");
+					if (et.type == "error")
+						return et;
+					this.text[j] = tmp;
+					switch (this.text[j]) {
+						case "," :
+							et.next = this.analysis(j+1, prev, "fc_reg"); break;
+						case ")" :
+							et.next = this.empty_tree(j); break;
+						default :
+							return this.error(j, "Synatx error at '" + this.text[j] + "'");
+					}
+					if (et.next.type == "error")
+						return et.next;
+					return et;
 				default:
-					return null;
+					return this.empty_tree(start);
 			}
 		}
-		
-		
 		// ==================================================================================
 		// 	Grammer Analysis
 		// ==================================================================================
-		
 		g_ana = new Object();
+		g_ana.convType = function(type1, type2) {
+			switch (type1) {
+				case "int" : 
+					if (type2[type2.length-1] == '*')
+						return true;
+				case "short" : case "long" :
+					if (type2 == "float")
+						return true;
+					if (type2 == "double")
+						return true;
+				case "char" : case "bool" :
+					switch (type2) {
+						case "char" : case "bool" : case "short" : case "int" : case "long" :
+							return true;
+						default :
+							return false;
+					}
+				case "float" : case "double" :
+					switch (type2) {
+						case "short" : case "int" : case "long" : case "float" : case "double" :
+							return true;
+						default :
+							return false;
+					}
+				case (type1[type1.length-1] == '*') :
+					if (type2 == "int")
+						return true;
+					if (type2[type2.length-1] == '*')
+						return true;
+					return false;
+				default :
+					return false;	
+			}
+		}
+		g_ana.create_exprTree = function(exprs, l, r) {
+			var et = new Object();
+			if (l > r) {
+				et.type = "empty";
+				et.end = exprs[l].end;
+				return et;
+			}
+			if (l == r) return exprs[l];
+			var opt = null, opt_i = -1;
+			for (var i = l ; i <= r ; i++)
+				if (opt == null || (op_r[exprs[i].type] != null && op_r[opt.type] < op_r[exprs[i].type])) {
+					opt = exprs[i].type; opt_i = i; 
+				}
+			et.type = opt_type;
+			switch (op_ft[opt.type]) {
+				case "UNITL" : 
+					et.value1 = this.create_exprTree(exprs, opt_i+1, r);
+					if (et.value1.type == "empty")
+						this.error(opt.end, "expected expression after ‘" + this.rec.text[opt.end] + "’ token"); 
+					return et;
+				case "UNITR" : 
+					et.value1 = this.create_exprTree(exprs, l, opt_i-1); 
+					if (et.value1.type == "empty")
+						this.error(opt.end, "expected expression before ‘" + this.rec.text[opt.end] + "’ token"); 
+					return et;
+				case "UNITLR" : 
+					if (opt_i == l) {
+						et.value1 = this.create_exprTree(exprs, l+1, r);
+						if (et.value1.type == "empty")
+							this.error(opt.end, "expected expression after '" + this.rec.text[opt.end] + "' token"); 
+					} else if (opt_i == r) { 
+						et.value1 = this.create_exprTree(exprs, l, r-1);
+						if (et.value1.type == "empty")
+							this.error(opt.end, "expected expression before '" + this.rec.text[opt.end] + "' token"); 
+					} else 
+						this.error(opt.end, "expected ';' after '" + this.rec.text[opt.end] + "'");
+					return et;
+				case "BINARY" : 
+					et.value1 = this.create_exprTree(exprs, l, opt_i-1);
+					if (et.value1.type == "empty")
+						this.error(opt.end, "expected expression before ‘" + this.rec.text[opt.end] + "’ token");
+					if (et.value2.type == "empty")
+						this.error(opt.end, "expected expression after ‘" + this.rec.text[opt.end] + "’ token");
+					et.value2 = this.create_exprTree(exprs, opt_i+1, r);
+					return et;
+				case "IF" :
+					et.value1 = this.create_exprTree(exprs, l, opt_i-1);
+					for (var i = opt_i+2 ; i <= r ; i++)
+						if (expr[i].type == "THEN") {
+							et.value2 = this.create_exprTree(exprs, opt_i+1, i-1);
+							et.value3 = this.create_exprTree(exprs, i+1, r);
+							if (et.value1.type == "empty")
+								this.error(opt.end, "expected expression before ‘" + this.rec.text[opt.end] + "’ token");
+							if (et.value2.type == "empty")
+								this.error(exprs[i].end, "expected expression before ‘" + this.rec.text[exprs[i].end] + "’ token");
+							if (et.value3.type == "empty")
+								this.error(exprs[i].end, "expected expression after ‘" + this.rec.text[exprs[i].end] + "’ token");
+							return et;
+						}
+					return this.error(opt.end, "excepted ':'");
+				case "THEN" :
+					for (var i = l ; i <= opt_i-2 ; i++)
+						if (expr[i].type == "IF") {
+							et.value1 = this.create_exprTree(exprs, l, i-1);
+							et.value2 = this.create_exprTree(exprs, i+1, opt_i-1);
+							et.value3 = this.create_exprTree(exprs, opt_i+1, r);
+							if (et.value1.type == "empty")
+								this.error(exprs[i].end, "expected expression before ‘" + this.text[exprs[i].end] + "’ token");
+							if (et.value2.type == "empty")
+								this.error(opt.end, "expected expression before ‘" + this.text[opt.end] + "’ token");
+							if (et.value3.type == "empty")
+								this.error(opt.end, "expected expression after ‘" + this.text[opt.end] + "’ token");
+							return et;
+						}
+					return this.error(opt.end, "excepted '?'");
+				default :
+					return this.error(opt.end, "unknown operator");
+			}
+		}
 		g_ana.analysis = function(et, prev) {
 			switch (et.type) {
 				case "class" :
-					this.typesize(et.text, prev+et.name);
-					return this.analysis(et.text, prev+et.name+"::");
+					prev += et.name+"::";
+					this.rec.addr_ct[prev] = 0;
+					for (et = et.text ; et != null ; et = et.next)
+						this.analysis(et, prev);
+					return true;
 				case "var" :
 					this.analysis(et.value, prev);
 					type1 = et.s_type;
 					type2 = getType(et.value, prev);
-					if (!this.inherited(type1, type2))
-						return error(j, sprintf("initialization makes %s from %s without a cast", type1, type2)); 
+					if (!this.convType(type2, type1))
+						return this.error(j, sprintf("could not convert ‘%s’ from ‘%s’ to ‘%s’", et.value.name, type2, type1));
+					et.addr = addr_ct[prev];
+					this.rec.addr_ct[prev] += this.sizeof(et.s_type);
 					return true;
 				case "func" :
 					prev += et.name + "::";
-					addr_ct = -4; 
+					this.rec.addr_ct[prev] = -4; 
 					for (e = et.reg ; e != null ; e = e.next) {
-						e.addr = addr_ct;
-						addr_ct -= this.sizeof[et.s_type];
+						e.addr = addr_ct[prev]; 
+						this.rec.addr_ct[prev] -= this.sizeof[et.s_type];
 					}
+					this.rec.addr_ct[prev] = 0;
 					return this.analysis(et.text, prev);
 				case "para" :
-					return this.analysis(et.text, prev);
+					this.rec.addr_ct[prev+et.bracket+"::"] = addr_ct[prev];
+					return this.analysis(et.text, prev+et.bracket+"::");
 				case "expr" :
-					et.e_tree = this.create_expr_tree(et.exprs, 0, et.exprs.length);
+					for (var i = 0 ; i < et.exprs.length ; i++)
+						if (et.exprs[i] == "expr") {
+							this.analysis(et.exprs[i], prev);
+							et.exprs[i] = et.exprs[i].exprTree;
+						} else if (et.exprs[i].type = "MULT" && (i==0 || op_r[et.exprs[i-1].type] == null))
+							et.exprs[i].type = "P_ADDR"; 
+					et.exprTree = this.create_exprTree(et.exprs, 0, et.exprs.length-1);
 				case "if" :
 					this.analysis(et.cond,   prev);
 					this.analysis(et.stmt,   prev);
 					this.analysis(et.e_stmt, prev);
 					type1 = getType(et.cond, prev);
-					if (!convertType(type1, "bool"))
-						return this.error(et.end, sprintf("could not convert ‘%s’ from ‘%s’ to ‘bool’", et.cond.name, type1));
+					if (!this.convType(type1, "bool"))
+						return this.error(et.cond.end, sprintf("could not convert ‘%s’ from ‘%s’ to ‘bool’", et.cond.name, type1));
 					return true;
 				case "while" :
+					this.rec.setLoop(et, prev);
 					this.analysis(et.cond,   prev);
 					this.analysis(et.stmt,   prev);
-					type1 = getType(et.cond, prev);
-					if (!convertType(type1, "bool"))
-						return this.error(et.end, sprintf("could not convert ‘%s’ from ‘%s’ to ‘bool’", et.cond.name, type1));
+					if (et.stmt.type == "para")
+						this.src.setLoop(et.stmt, prev+et.stmt.bracket+"::");
+					type1 = this.getType(et.cond, prev);
+					if (!this.convType(type1, "bool"))
+						return this.error(et.cond.end, sprintf("could not convert ‘%s’ from ‘%s’ to ‘bool’", et.cond.name, type1));
+					return true;
+				case "for" :
+					this.rec.setLoop(et, prev);
+					this.analysis(et.s_expr, prev);
+					this.analysis(et.c_expr, prev);
+					this.analysis(et.e_expr, prev);
+					this.analysis(et.stmt, prev);
+					if (et.stmt.type == "para")
+						this.src.setLoop(et.stmt, prev+et.stmt.bracket+"::");
+					type1 = getType(et.c_expr, prev);
+					if (!this.convType(type1, "bool"))
+						return this.error(et.c_expr.end, sprintf("could not convert ‘%s’ from ‘%s’ to ‘bool’", et.cond.name, type1));
+					return true;
+				case "switch" :
+					this.rec.setSwitch(et, prev);
+					this.analysis(et.expr, prev);
+					prev += et.bracket + "::";
+					this.analysis(et.text, prev);
+					for (var ec = et.text ; ec != null ; ec = ec.next)
+						this.analysis(ec, prev);
+					return true;
+				case "case" :
+					swit = this.rec.getSwitch(prev);
+					if (swit == null)
+						return this.error(et.end, "case label not within a switch statement");
+					type1 = this.getType(swit.expr);
+					type2 = this.getType(et.value);
+					if (!this.convType(type1, type2))
+						return this.error(et.end, sprintf("could not convert ‘%s’ from ‘%s’ to ‘%s’", et.value.name, type2, type1));
+					return true;
+				case "default" :
+					swit = this.rec.getSwitch(prev);
+					if (swit == null)
+						return this.error(et.end, "default label not within a switch statement");
+					return true;
+				case "break" :
+					swit = this.rec.getSwitch(prev);
+					loop = this.rec.getLoop(prev);
+					if (swit == null && loop == null)
+						return this.error(et.end, "break statement not within loop or switch");
+					if (swit != null)
+						et.b_point = swit.next;
+					else 
+						et.b_point = loop.next;
+					return true;
+				case "continue" :
+					loop = this.rec.getLoop(prev);
+					if (loop == null)
+						return this.error(et.end, "continue statement not within a loop");
+					if (loop.type == "for")
+						et.c_point = loop.e_stmt;
+					else
+						et.c_point = loop.cond;
+					return true;
+				default :
 					return true;
 			}
 		}
-		
 		// ==================================================================================
 		// 	Instruction generate
 		// ==================================================================================
+		
+		var i_gen = new Object();
+		i_gen.rec = rec;
+		i_gen.generate = function(et, prev, addr, reg_l) {
+			et.addr = addr;
+			var insts = null;
+			
+			switch (et.type) {
+				case "func" :
+					insts = this.generate(et.text, prev+et.name+"::", addr, reg_l); 
+					break;
+				case "para" :
+					insts = this.generate(et.text, prev+et.bracket+"::", addr, reg_l); 
+					break;
+				case "var" :
+					if (et.value.type != "empty") {
+						insts = this.calc(et.value, reg_l);
+						insts.concat(this.save(prev+et.name, reg_l));
+					} else 
+						insts = new Array();
+					break;
+				case "expr_assign" :
+					insts = this.calc_addr(et.value1, reg_l);
+					insts.concat(this.calc(et.value2, reg_l+1, reg_l+1));
+					insts.concat(this.save_addr(reg_l, reg_l+1));
+					break;;
+				case "if" :
+					insts = this.generate(et.cond, prev, addr, reg_l);
+					if (et.e_stmt.type != "empty") {
+						insts.concat(this.beqz(reg_l, et.e_stmt));
+						insts.concat(this.generate(et.stmt, prev, addr+insts.length, reg_l));
+						insts.concat(this.b(et.next));
+						insts.concat(this.generate(et.e_stmt, prev, addr+insts.length, reg_l));
+					} else {
+						insts.concat(this.beqz(reg_l, et.next));
+						insts.concat(this.generate(et.stmt, prev, addr+insts.length, reg_l));
+					}
+					break;
+				case "while" :
+					insts = this.calc(et.cond, prev, addr, reg_l);
+					insts.concat(this.beqz(reg_l, et.next));
+					insts.concat(this.generate(et.stmt, prev, addr+insts.length, reg_l));
+					insts.concat(this.calc(et.cond, prev, addr+insts.length, reg_l));
+					insts.concat(this.bnez(reg_l, et.stmt));
+					break;
+				case "for" :
+					insts = this.generate(et.s_expr, prev, addr, reg_l);
+					insts.concat(this.calc(et.c_expr, prev, addr+insts.length, reg_l));
+					insts.concat(this.beqz(reg_l, et.next));
+					insts.concat(this.generate(et.stmt, prev, addr+insts.length, reg_l));
+					insts.concat(this.generate(et.e_expr, prev, addr+inst.length, reg_l));
+					insts.concat(this.calc(et.cond, prev, addr+inst.length, reg_l));
+					insts.concat(this.bnez(reg_l, et.stmt));
+					break;
+				case "break" :
+					insts = this.b(et.b_point);
+					break;
+				case "continue" :
+					insts = this.b(et.c_point);
+					break;
+				default :
+					insts = new Array();
+					if (this.value3 != null) 
+						insts.concat(this.calc(et, prev, addr, reg_l));
+					else {
+						if (this.value1 != null)
+							insts.concat(this.generate(et.value1, prev, addr+inst.length, reg_l));
+						if (this.value2 != null)
+							insts.concat(this.generate(et.value2, prev, addr+inst.length, reg_l));
+					}
+					break;
+			}
+			if (et.next != null)
+				insts.concat(this.generate(et, prev, addr+inst.length, reg_l));
+			return insts;
+		}
+		i_gen.calc = function(et, prev, addr, reg_l) {
+			et.addr = addr;
+			var insts = new Array();
+			if (this.value3 != null) { 
+				insts.concat(this.calc(et.value1, prev, addr+inst.length, reg_l));
+				insts.concat(this.beqz(reg_l, et.value3));
+				insts.concat(this.calc(et.value2, prev, addr+inst.length, reg_l));
+				insts.concat(this.b(next));
+				insts.concat(this.calc(et.value3, prev, addr+inst.length, reg_l));
+			} else {
+				if (this.value1 != null)
+					insts.concat(this.calc(et.value1, prev, addr+inst.length, reg_l));
+				//if (et.type == "expr_booland")
+				//	insts.concat(this.beqz(reg_l, next));
+				//if (et.type == "expr_boolor")
+				//	insts.concat(this.bnez(reg_l, next));
+				if (this.value2 != null)
+					insts.concat(this.calc(et.value2, prev, addr+inst.length, reg_l+1));
+				switch (et.type) {
+					// ...
+				}
+			}
+		}
+		i_gen.gen_baddr = function(exprs) {
+			for (var i = 0 ; i < exprs.length ; i++) {
+				if (exprs[i].type[0] == 'B') 
+					exprs[i].imme = exprs[i].imme.addr - i;
+				if (exprs[i].type[0] == 'J')
+					exprs[i].imme = exprs[i].imme.addr;
+			}
+		}
 		
 		// ==================================================================================
 		// 	User interface
@@ -543,31 +1293,39 @@
 		ui.rec = rec;
 		ui.w_ana = w_ana;
 		ui.g_ana = g_ana;
-		ui.load = function(filename, ls) {
+		ui.load = function(para) {
 			ui.input_paused();
-			if (window.ActiveXObject) {
-				var fso = new ActiveXObject("Scripting.FileSystemObject");
-				var file = fso.GetFile(filename);
-				var reader = new FileReader();
-				reader.onload = function(e) {
-					this.rec.text = this.result;
-				}
-				reader.readAsText(file);
-			} else {
-				var xmlHttp = new XMLHttpRequest();
-				xmlHttp.open("GET", filename, false);
-				xmlHttp.send(null);
-				this.rec.text = xmlHttp.responseText;
+			var i = para.indexOf(" ");
+			if (i == -1) i = para.length;
+			var filename = para.slice(0, i);
+			para = para.slice(i);
+			var word = "";
+			var b_ls = false;
+			while (para.length != 0) {
+				var i = para.indexOf(" ", 1);
+				if (i == -1) i = para.length;
+				word = para.slice(1, i);
+				para = para.slice(i);
+				if (word == "-ls") b_ls = true;
 			}
+			var xmlHttp = new XMLHttpRequest();
+			xmlHttp.open("GET", filename, false);
+			xmlHttp.send(null);
+			this.rec.setText(xmlHttp.responseText+'$');
 			println("complete reading c code '" + filename + "'");
+			if (b_ls) this.printAll(this.rec.text);
 			ui.input_active();
 		}
-		ui.compile = function(asm, asmpath) {
+		ui.compile = function() {
+			ui.input_paused();
 			this.w_ana.text = this.rec.text;
 			var et = this.w_ana.analysis(0, "", "code");
+			ui.input_active();
 		}
 		ui.save = function(filename) {
+			ui.input_paused();
 			this.savepath = filename;
+			ui.input_active();
 		}
 		ui.input_paused = function() {
 			ctrl_active = false;
@@ -576,14 +1334,33 @@
 			ctrl_active = true;
 			print("uComplier >> ");	
 		}
+		ui.pause = function() {
+			pause_active = true;
+			println("Press ANYKEY to continue...");
+		}
+		ui.printAll = function(text) {
+			var l_ct = 0;
+			while (text.length > 0) {
+				if (pause_active) continue;
+				i = text.indexOf("\n");
+				if (i == -1) i = text.length;
+				line = text.slice(0, i);
+				text = text.slice(i+1);
+				println(line);
+				if (++l_ct > 38) {
+					l_ct = 0; this.pause();
+				}
+			}
+		}
 		
 		ui.input_paused();
 		println("Ucore C complier v1.0 (uComplier)");
+		println("                                     Made by Morenan");
 		println("Usage : load filepath [-ls] : Load the c source code");
-		println("			-ls : Print the code on the webpage screen.");
-		println("		 save filepath : Target the instruction code file's path(seem as 'Execute file')");
-		println("		 compile [-o [filepath]] : Compile the c code, and generate the instruction code");
-		println("			-o [filepath] : Save the assemble. Print it when filepath is ignored.");
+		println("           -ls : Print the code on the webpage screen.");
+		println("        save filepath : Target the instruction code file's path(seem as 'Execute file')");
+		println("        compile [-o [filepath]] : Compile the c code, and generate the instruction code");
+		println("           -o [filepath] : Save the assemble. Print it when filepath is ignored.");
 		ui.input_active();
 		
 	</script>
