@@ -1,20 +1,30 @@
-/*
-void xopowo() {
-	//printf("xopowo\n");
-}
-*/
+#include <stdio.h>
 
-void main(int argc, char** argv) {
-	int i = 0, j = 0;
-	while (i < 10) {
-		xopowo();
-		i++;
-	}
-	for (i = 0 ; i < 10 ; i++) {
-		xopowo();
-		j += i*i;
-	}
-	//printf("%d", j);
+struct Haha {
+	int i, j, k;
+	char c;
+};
+
+struct Hoho {
+	int i;
+	double d;
+};
+
+void xopowo() {
+	printf("xopowo!\n");
+}
+
+void niconiconi(int i) {
+	printf("%d %d %d\n", i, i, i);
+}
+
+int main(int argc, char** argv) {
+	int i, j;
+	struct Haha haha;
+	niconiconi();
+	niconiconi(i, j);
+	niconiconi(haha);
+		
 }
 
 

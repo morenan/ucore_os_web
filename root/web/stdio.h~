@@ -5,8 +5,12 @@ int strlen(char* s) {
 }
 
 void printC(char c) {
-	asm("SB 0xbf01, $c");
-	asm("INT 0x0a");
+	asm("SB 0xbf00[4] c");
+	asm("SB 0xbf00[5] 0x01");
+	char fb = 0;
+	asm("LB 0xbf00[6] fb");
+	while (!fb) asm("LB 0xbf00[6] fb");
+	asm("SB 0xbf00[5] 0x00");
 }
 
 void printS(char* s) {
@@ -42,11 +46,12 @@ void printLF(double lf) {
 }
 
 void printf(char* format, ...) {
+	void* args = va_list_args;
 	int i = 0;
 	char* end = format+strlen(format);
 	while (*end != '\0') end++;
 	while (format < end) {
-		if (*format == '%' && format+1<end) {
+		if (*format == '%' && format+1<end)
 			switch (format[1]) {
 				case 'd' : printD(*((int*)(args+(i++)))); format+=2; break;
 				case 'l' : 
@@ -58,23 +63,31 @@ void printf(char* format, ...) {
 				case 'f' : printF(*((float*)(args+(i++)))); break;
 				case 'c' : printC(*((char*)(args+(i++)))); format+=2; break;
 				case 's' : printS((char*)(args+(i++))); format+=2; break;
-				default : printC(*(format++)); break;
-		} else
+				default  : printC(*(format++)); break;
+			}
+		else
 			printC(*(format++));
 	}
 }
 
 char seek() {
-	asm("LB 0xbf00, ra");
-	asm("RET");
+	char c = 0;
+	char fb = 0;
+	asm("SB 0xbf00[1] 0x01");
+	asm("LB 0xbf00[2] fb");
+	while (!fb) asm("LB 0xbf00[2] fb");
+	asm("LB 0xbf00[0] c");
+	return c;
 }
 
 char getchar() {
-	asm("LB 0xbf00, ra");
-	asm("SB 0xbf02, 1");
-	asm("INT 0x0a");
-	asm("SB 0xbf02, 0");
-	asm("RET");
+	char c = 0;
+	char fb = 0;
+	asm("SB 0xbf00[1] 0x02");
+	asm("LB 0xbf00[2] fb");
+	while (!fb) asm("LB 0xbf00[2] fb");
+	asm("LB 0xbf00[0] c");
+	return c;
 }
 
 void scanC(char* c) {
@@ -122,7 +135,7 @@ void scanF(float* f) {
 	}
 }
 
-void scanLF(double* f) {
+void scanLF(double* lf) {
 	char c;
 	while ((c=getchar())==' ' || c=='\n');
 	long d;
@@ -133,29 +146,31 @@ void scanLF(double* f) {
 	double lfb = 1.0;
 	while ((c=seek())>='0' && c<='9') {
 		*lf = lfb*(int)(c-'0');
-		fb /= 10; getchar();
+		lfb /= 10; getchar();
 	}
 }
 
 void scanf(char* format, ...) {
+	void* args = va_list_args;
 	int i = 0;
 	char* end = format+strlen(format);
 	while (*end != '\0') end++;
 	while (format < end) {
-		if (*format == '%' && format+1<end) {
+		if (*format == '%' && format+1<end) 
 			switch (format[1]) {
-				case 'd' : scanD(((int*)(args+(i++)))); format+=2; break;
+				case 'd' : scanD((int*)(args+(i++))); format+=2; break;
 				case 'l' : 
 					switch (format[2]) {
-						case 'd' : scanLD(((long*)(args+(i++)))); format+=3; break;
-						case 'f' : scanLF(((double*)(args+(i++)))); format+=3; break;
-						default  : scanC((format++)); break;
+						case 'd' : scanLD((long*)(args+(i++))); format+=3; break;
+						case 'f' : scanLF((double*)(args+(i++))); format+=3; break;
+						default  : scanC(format++); break;
 					}
-				case 'f' : scanF(((float*)(args+(i++)))); break;
-				case 'c' : scanC(((char*)(args+(i++)))); format+=2; break;
+				case 'f' : scanF((float*)(args+(i++))); break;
+				case 'c' : scanC((char*)(args+(i++))); format+=2; break;
 				case 's' : scanS((char*)(args+(i++))); format+=2; break;
-				default  : scanC((format++)); break;
-		} else
+				default  : scanC(format++); break;
+			}
+		else
 			printC(*(format++));
 	}
 }
