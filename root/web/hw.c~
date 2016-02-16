@@ -20,8 +20,14 @@ void niconiconi(int i) {
 
 int main(int argc, char** argv) {
 	int i, j;
-	niconiconi();
-	niconiconi(i, j);	
+	struct Haha haha;
+	//niconiconi();
+	//niconiconi(i, j);
+	//niconiconi(haha);
+	short s = 0;
+	void* v = 0;
+	v[s];
+		
 }
 
 
