@@ -139,7 +139,7 @@ void scanLF(double* lf) {
 	char c;
 	while ((c=getchar())==' ' || c=='\n');
 	long d;
-	scanLD(d);
+	scanLD(&d);
 	*lf = (double)d;
 	if (seek() != '.') return;
 	getchar();
