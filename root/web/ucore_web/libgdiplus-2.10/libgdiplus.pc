@@ -1,0 +1,12 @@
+prefix=/usr
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+
+Name: libgdiplus
+Description: GDI+ implementation
+Version: 2.10
+Requires: glib-2.0 gmodule-2.0 gthread-2.0
+Libs: -L${libdir} -lgdiplus -lglib-2.0   $(top_builddir)/cairo/src/libcairo.la  -lfontconfig -lfreetype   -lfreetype    -lpng12  
+Cflags: -I${includedir} -I/usr/include/glib-2.0 -I/usr/lib/x86_64-linux-gnu/glib-2.0/include   -I$(top_builddir)/pixman/pixman -I$(top_srcdir)/pixman/pixman -I$(top_builddir)/cairo/src -I$(top_srcdir)/cairo/src  -I/usr/include/freetype2   -I/usr/include/freetype2   

@@ -42,7 +42,7 @@ void printLF(double lf) {
 	printD(long(lf));
 	printC('.');
 	int i;
-	printD(long(((lf>0)?(f-long(f)):(long(f)-f))*10000));
+	printD(long(((lf>0)?(lf-long(lf)):(long(lf)-lf))*10000));
 }
 
 void printf(char* format, ...) {
@@ -53,16 +53,16 @@ void printf(char* format, ...) {
 	while (format < end) {
 		if (*format == '%' && format+1<end)
 			switch (format[1]) {
-				case 'd' : printD(*((int*)(args+(i++)))); format+=2; break;
+				case 'd' : printD(*((int*)(args+(i--)))); format+=2; break;
 				case 'l' : 
 					switch (format[2]) {
-						case 'd' : printLD(*((long*)(args+(i++)))); format+=3; break;
-						case 'f' : printLF(*((double*)(args+(i++)))); format+=3; break;
+						case 'd' : printLD(*((long*)(args+(i--)))); format+=3; break;
+						case 'f' : printLF(*((double*)(args+(i--)))); format+=3; break;
 						default  : printC(*(format++)); break;
 					}
-				case 'f' : printF(*((float*)(args+(i++)))); break;
-				case 'c' : printC(*((char*)(args+(i++)))); format+=2; break;
-				case 's' : printS((char*)(args+(i++))); format+=2; break;
+				case 'f' : printF(*((float*)(args+(i--)))); break;
+				case 'c' : printC(*((char*)(args+(i--)))); format+=2; break;
+				case 's' : printS((char*)(args+(i--))); format+=2; break;
 				default  : printC(*(format++)); break;
 			}
 		else
@@ -158,16 +158,17 @@ void scanf(char* format, ...) {
 	while (format < end) {
 		if (*format == '%' && format+1<end) 
 			switch (format[1]) {
-				case 'd' : scanD((int*)(args+(i++))); format+=2; break;
+				case 'd' : scanD((int*)(args+(i--))); format+=2; break;
 				case 'l' : 
 					switch (format[2]) {
-						case 'd' : scanLD((long*)(args+(i++))); format+=3; break;
-						case 'f' : scanLF((double*)(args+(i++))); format+=3; break;
+						case 'd' : scanLD((long*)(args+(i--))); format+=3; break;
+						case 'f' : scanLF((double*)(args+(i--))); format+=3; break;
 						default  : scanC(format++); break;
 					}
-				case 'f' : scanF((float*)(args+(i++))); break;
-				case 'c' : scanC((char*)(args+(i++))); format+=2; break;
-				case 's' : scanS((char*)(args+(i++))); format+=2; break;
+					break;
+				case 'f' : scanF((float*)(args+(i--))); break;
+				case 'c' : scanC((char*)(args+(i--))); format+=2; break;
+				case 's' : scanS((char*)(args+(i--))); format+=2; break;
 				default  : scanC(format++); break;
 			}
 		else

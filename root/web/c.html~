@@ -38,7 +38,7 @@
 				board.innerHTML = text;
 				if (cmd.slice(0, 4) == "load")
 					ui.load(cmd.slice(5));
-				else if (cmd.slice(0, 3) == "save")
+				else if (cmd.slice(0, 4) == "save")
 					ui.save(cmd.slice(5));
 				else if (cmd == "compile") 
 					ui.compile();
@@ -148,6 +148,8 @@
 	  	op_t["&&"] = "BOOLAND";
 	  	op_t["++"] = "INC";
 	  	op_t["--"] = "DEC";
+	  	op_t["."] = "NUMBER";
+	  	op_t["->"] = "PNUMBER";
 	  	op_t["+="] = op_t["="] + op_t["+"];
 	  	op_t["-="] = op_t["="] + op_t["-"];
 	  	op_t["*="] = op_t["="] + op_t["*"];
@@ -159,23 +161,26 @@
 	  	
 	  	for (var key in op_t)
 	  		op_rt[op_t[key]] = key;
+	  	op_rt["REVERSE"] = "-";  
 	  	
 	  	op_st["ADD"]  = op_st["SUB"]   = op_st["MULT"]    = op_st["DIV"]     = op_st["MOD"] 
 	  = op_st["AND"]  = op_st["OR"]    = op_st["XOR"]     = op_st["BOOLAND"] = op_st["BOOLOR"]
 	  = op_st["SLL"]  = op_st["SRL"]   = op_st["SRA"]
 	  = op_st["LESS"] = op_st["MORE"]  = op_st["NOTLESS"] = op_st["NOTMORE"] 
 	  = op_st["EQUAL"] = op_st["NOTEQUAL"] = "BINARY";
-	  	op_st["NETZ"] = op_st["NOT"]   = op_st["CONV"]    = op_st["PADDR"]   = op_st["ADDR"] = "UNITL";
+	  	op_st["NETZ"] = op_st["NOT"]   = op_st["CONV"]    = op_st["PADDR"]   
+	  = op_st["ADDR"] = op_st["REVERSE"] = "UNITL";
 	  	op_st["OFFSET"] = "UNITR"; 
 	  	op_st["INC"]  = op_st["DEC"] = "UNITLR";
 	  	op_st["ASSIGN"]   = op_st[op_t["+="]] = op_st[op_t["-="]]  = op_st[op_t["*="]]
 	  = op_st[op_t["/="]] = op_st[op_t["|="]] = op_st[op_t["<<="]] = op_st[op_t[">>="]] = "BINARY";
+	  	op_st["NUMBER"] = op_st["PNUMBER"] = "BINARY";
 	  	op_st["IF"] = "IF";
 	  	op_st["ELSE"] = "ELSE";
 	  	
-	  	op_r["OFFSET"] = op_r["CONV"]  = 1;
+	  	op_r["OFFSET"] = op_r["NUMBER"]= op_r["PNUMBER"] = 1;
 		op_r["NEGA"]   = op_r["INC"]   = op_r["DEC"]  = op_r["NETZ"]
-	  = op_r["PADDR"]  = op_r["NOT"]   = op_r["ADDR"] = 2;
+	  = op_r["PADDR"]  = op_r["NOT"]   = op_r["ADDR"] = op_r["REVERSE"] = op_r["CONV"] = 2;
 	    op_r["MULT"]   = op_r["DIV"]   = op_r["MOD"] = 3;
 	    op_r["ADD"]    = op_r["SUB"] = 4;
 	    op_r["SLL"]	   = op_r["SRL"]   = op_r["SRA"] = 5;
@@ -205,6 +210,8 @@
 		// ==================================================================================
 		// 	Record
 		// ==================================================================================
+		var ADDR_CONST = 0x4000, ADDR_STATIC = 0x6000;
+		
 		rec.filename = "";
 		rec.text = "";
 		rec.t_line = null;
@@ -217,6 +224,7 @@
 		rec.swits = {};
 		rec.brackets = 0;
 		rec.error_ct = 0;
+		rec.c_data = "";
 		rec.initialize = function() {
 			this.types = {};
 			this.vars = {};
@@ -226,13 +234,14 @@
 			this.swits = {};
 			this.brackets = 0;
 			this.error_ct = 0;
-			rec.sizeof["bool"] = rec.sizeof["char"] = 1;
-			rec.sizeof["short"] = 2;
-			rec.sizeof["int"] = 4;
-			rec.sizeof["long"] = 8;
-			rec.sizeof["void"] = 1;
-			rec.sizeof["float"] = 4;
-			rec.sizeof["double"] = 8;
+			this.sizeof["bool"] = rec.sizeof["char"] = 1;
+			this.sizeof["short"] = 2;
+			this.sizeof["int"] = 4;
+			this.sizeof["long"] = 8;
+			this.sizeof["void"] = 1;
+			this.sizeof["float"] = 4;
+			this.sizeof["double"] = 8;
+			this.addr_ct[""] = ADDR_STATIC;
 		}
 		rec.clone = function() {
 			var rec_c = new Object();
@@ -249,6 +258,16 @@
 			rec_c.swits = this.swits;
 			rec_c.brackets = this.brackets;
 			rec_c.error_ct = this.error_ct;
+			rec_c.c_data = this.c_data;
+			
+			rec_c.setType = this.setType;
+			rec_c.getType = this.getType;
+			rec_c.isStructtype = this.isStructtype;
+			rec_c.setVariable = this.setVariable;
+			rec_c.getVariable = this.getVariable;
+			rec_c.createBracket = this.createBracket;
+			rec_c.setText = this.setText;
+			rec_c.printl = this.printl;
 			return rec_c;
 		}
 		rec.setType = function(et) {
@@ -284,11 +303,13 @@
 			return "b" + (++this.brackets);
 		}
 		rec.setText = function(text) {
+			println("setText b1");
 			this.text = text;
 			this.t_line = new Array(text.length);
 			this.t_column = new Array(text.length);
 			this.t_line[0] = 1;
 			this.t_column[0] = 1;
+			println("setText b2");
 			for (var i = 0 ; i < text.length-1; i++)
 				switch (this.text[i]) {
 					case '\n' : 
@@ -327,7 +348,7 @@
 		w_ana.rec = rec;
 		w_ana.error = function(id, msg) {
 			this.rec.error_ct++;
-			println("[" + this.rec.t_line[id] + "," + this.rec.t_column[id] + "] : " + msg);
+			println(this.rec.filename+" [" + this.rec.t_line[id] + "," + this.rec.t_column[id] + "] : " + msg);
 			this.rec.printl(id);
 			var et = new Object();
 			et.msg = msg;
@@ -347,7 +368,7 @@
 		}
 		w_ana.isEndCode = function(ch, type) {
 			switch (type) {
-				case "expr" : return (ch==')')||(ch==']')||(ch==';')||(ch==',');
+				case "expr" : return (ch==')')||(ch==']')||(ch==';')||(ch==',')||(ch=='}');
 				case "stmt" : return (ch==';');
 				case "para" : case "c_code" : return (ch=='}');
 				default : return ch==null;
@@ -359,7 +380,7 @@
 		}
 		w_ana.getVEnd = function(et) {
 			//println("getEnd et.type="+et.type + " et.end="+et.end);
-			return (et.v_next != null) ? this.getEnd(et.v_next) : et.end;
+			return (et.v_next != null) ? this.getVEnd(et.v_next) : et.end;
 		}
 		w_ana.empty_tree = function(end) {
 			var et = new Object();
@@ -375,25 +396,24 @@
 				return empty_tree(this.text.length);
 			if (type != "string" && type != "char")
 				i = this.spaceskip(i);
-			if (this.text.slice(start, start+2) == "//") {
-				i = this.text.indexOf("\n", start);
-				if (i == -1) return this.error(this.text.length, "Excepted '\\n'"); 
+			if (this.text.slice(i, i+2) == "//") {
+				i = this.text.indexOf("\n", i);
+				if (i == -1) return this.error(this.text.length, "expected '\\n'"); 
 				return this.analysis(i+1, prev, type);
-			}	
-			if (this.text.slice(start, start+2) == "/*") {
-				i = this.text.indexOf("*/", start); 
-				if (i == -1) return this.error(this.text.length, "Excepted '*/'");
+			}
+			if (this.text.slice(i, i+2) == "/*") {
+				i = this.text.indexOf("*/", i); 
+				if (i == -1) return this.error(this.text.length, "expected '*/'");
 				return this.analysis(i+2, prev, type);
 			}
 			if (i >= this.text.length)
 				return empty_tree(this.text.length);
-			println("word analysis start=" + i + ", prev=" + prev + ", type=" + type + " head=" + this.text.slice(i, i+2));
+			println("word analysis start=" + i + ", prev=" + prev + ", type=" + type + " head=" + this.text[i]+" length="+this.text.length);
 			switch (type) {
 				case "code" :
 					j = this.alphaskip(i);
 					word = this.text.slice(i, j);
 					j = this.spaceskip(j);
-					//println("type=code word=" + word);	
 					switch (word) {
 						case "struct" :
 							et 		= this.analysis(j, 		  prev, "class");
@@ -402,16 +422,17 @@
 							et.next = this.analysis(et.end+1, prev, "code");
 							if (et.next.type == "error")
 								return et.next;
-							this.reg.setType(et);
+							this.rec.setType(et);
 							return et;
 						case "" :
+							//alert("code text[j]="+this.text[j]);
 							switch (this.text[j]) {
 								case "$" : return this.empty_tree(j);
 								case "#" : 
 									if (this.text.slice(j+1, j+8) == "include") {
-										i = this.spaceskip(j+1);
+										i = this.spaceskip(j+8);
 										if (this.text[i] != '<') 
-											return this.error(i, "#include expects \"FILENAME\" or <FILENAME>");
+											return this.error(i, "#include expects \"FILENAME\" or \\<FILENAME\\>");
 										for (j=++i ; this.text[j] != '>' ; j++) ;
 										word = this.text.slice(i, j);
 										et.type = "include";
@@ -452,7 +473,7 @@
 						return et;
 					if (et.type == "error") {
 						if (et.msg == "Synatx error at '$'")
-							return this.error(i, "Excepted '}'");
+							return this.error(i, "expected '}'");
 						var b_ct = 1;
 						for (j = i ; b_ct > 0 ; j++) {
 							if (this.text[j] == '$') break;
@@ -463,7 +484,7 @@
 							if (b_ct <= 0) break;
 						}
 						if (this.text[j] != '}')
-							return this.error(j, "Excepted '}'");
+							return this.error(j, "expected '}'");
 						return this.empty_tree(j);
 					}
 					et.next = this.analysis(this.getVEnd(et)+1, prev, "para");
@@ -493,6 +514,8 @@
 								default:
 									return this.analysis(i, prev, "expr");
 							}
+						case "struct" :
+							return this.analysis(j, prev, "class");
 						case "if" :
 							et.type = "if";
 							if (this.text[j] == '(') 
@@ -562,12 +585,12 @@
 							return et;
 						case "switch" :
 							if (this.text[j] != '(')
-								return this.error(j, "Except '(' after 'switch'");
+								return this.error(j, "expect '(' after 'switch'");
 							et.type = "switch";
 							et.expr = this.analysis(j+1, prev, "expr");
 							j = this.spaceskip(et.expr.end+1);
 							if (this.text[j] != '{')
-								return this.error(j, "Except '{' after 'switch'");
+								return this.error(j, "expect '{' after 'switch'");
 							et.bracket = this.rec.createBracket();
 							et.text = this.analysis(j+1, prev+et.bracket+"::", "s_code");
 							//println("type=switch br="+et.bracket);
@@ -625,9 +648,8 @@
 						return this.analysis(i+1, prev, "string");
 					j = this.alphaskip(i);
 					word = this.text.slice(i, j);
-					et.end = i+word.length-1;
 					if (word.length == 0)
-						return this.error(i, "Excepted constant");
+						return this.error(i, "expected constant");
 					if (word.search("^[0-9]+$") != -1) {
 						et = new Object();
 						et.type = "CONST";
@@ -642,12 +664,26 @@
 						et = new Object();
 						et.type = "CONST";
 						et.s_type = "int";
-						et.value = parseHex(word);
+						et.value = parseInt(word, 16);
 					} else {
 						var tmp = et.end;
 						et = this.error(i, "'" + word + "' is not a constant");
 						et.end = tmp;
 					}
+					et.end = i+word.length-1;
+					//println("type=const end="+et.end);
+					return et;
+				case "array" :
+					et = this.analysis(i, prev, "expr");
+					if (et.type == "error")
+						return et;
+					switch (this.text[et.end]) {
+						case ',' : et.next = this.analysis(et.end+1, prev, "array"); break;
+						case '}' : et.next = this.empty_tree(et.end); break;
+						default : return this.error(et.end, "synatx error at '"+this.text[et.end]+"'");
+					}
+					if (et.next.type == "error")
+						return et.next;
 					return et;
 				case "expr" :
 					var e_start = i;
@@ -665,12 +701,13 @@
 									j = this.alphaskip(j+1);
 									word = this.text.slice(i, j);
 									j = this.spaceskip(j);
-									println("float word="+word);
+									//println("float word="+word);
 									if (word.search("^[0-9]+.[0-9]+$") != -1) {
 										et.name = word;
 										et.type = "CONST";
 										et.s_type = "float";
-										et.value = parseFloat(word);	
+										et.value = parseFloat(word);
+										et.end = i+word.length-1;	
 										exprs.push(et);
 									} else 
 										this.error(j, "synatx error at '.'");
@@ -680,6 +717,7 @@
 									et.type = "CONST";
 									et.s_type = "int";
 									et.value = parseInt(word);
+									et.end = i+word.length-1;
 									exprs.push(et);
 								}
 							} else if (word.search("^0x[0-9a-fA-F]+$") != -1) {
@@ -687,31 +725,10 @@
 								et.type = "CONST";
 								et.s_type = "float";
 								et.value = parseHex(word);
+								et.end = i+word.length-1;
 								exprs.push(et);
 							} else if (/[A-Za-z_]/.test(word.slice(0, 1))) {
-								if ((k=word.search("/.")) != -1) {
-									o_word = this.text.slice(i, i+k);
-									if (this.rec.getVariable(prev+o_word) == null)
-										return this.error(i, "'" + word + "' uncleared");
-									et.name = word;
-									et.type = "OBJ_NUMBER";
-									et.value = this.analysis(i+k+1, prev+this.getType(o_word,prev)+"::", "obj_number");
-									//if (et.value.type == "error")
-									//	return et.value;
-									j = this.spaceskip(et.end+1);
-									exprs.push(et);
-								} else if ((k=word.search("->")) != -1) {
-									o_word = this.text.slice(i, i+k);
-									if (this.rec.getVariable(prev+o_word) == null)
-										return this.error(j, "'" + word + "' uncleared");
-									et.name = word;
-									et.type = "OBJP_NUMBER";
-									et.value = this.analysis(i+k+2, prev+this.getPType(o_word,prev)+"::", "obj_number");
-									//if (et.value.type == "error")
-									//	return et.value;
-									j = this.spaceskip(et.end+1);
-									exprs.push(et);
-								} else if (this.text[j] == '(') {
+								if (this.text[j] == '(') {
 									et.name = word;
 									et.value = this.rec.getVariable(prev+word);
 									if (et.value == null) {
@@ -741,13 +758,13 @@
 									et.s_type = word;
 									et.end = j;
 									exprs.push(et);
-								} else if (this.rec.getVariable(prev+word) != null) {
+								} else {
 									et.name = word;
 									et.type = "VAR";
-									et.value = this.rec.getVariable(prev+word);
+									//et.value = this.rec.getVariable(prev+word);
+									et.end = j;
 									exprs.push(et);
-								} else 
-									return this.error(j, "'" + word + "' uncleared");
+								}
 							} else
 								return this.error(j, "'" + word + "' uncleared");	
 						}
@@ -779,6 +796,14 @@
 								if (et.value.type == "error")
 									return et.value;
 								et.end = et.value.end;
+								i = et.end+1;
+								et.name = this.text.slice(j+1, i);
+								exprs.push(et);
+								break;
+							case '{' :
+								et.type = "ARRAY";
+								et.text = this.analysis(j+1, prev, "array");
+								et.end = this.getEnd(et.text);
 								i = et.end+1;
 								et.name = this.text.slice(j+1, i);
 								exprs.push(et);
@@ -851,28 +876,80 @@
 					j = this.spaceskip(j);
 					if (this.text[j] == '{') {
 						et.type = "class";
-						et.text = this.analysis(i+1, prev+word+"::", "c_code");
+						et.text = this.analysis(j+1, prev+word+"::", "c_code");
 						if (et.text.type == "error")
 							return et.text;
 						et.name = word;
-						et.end = this.getEnd(et.text)+1;
-						while (this.text[et.end] != '}') et.end++;
+						et.end = this.spaceskip(this.getEnd(et.text)+1);
+						//println("class end="+this.text[et.end]);
+						this.rec.setType(et, prev);
 						return et;
+					}
+					var s_type = word;
+					while (this.text[j] == '*') {
+						s_type += '*'; 
+						j = this.spaceskip(j+1);
+					}
+					i = j; j = this.alphaskip(i);
+					word = this.text.slice(i, j);
+					j = this.spaceskip(j);
+					switch (this.text[j]) {
+						case '=' : 
+							et.type = "var";
+							et.name = word;
+							et.s_type = "";
+							et.value = this.analysis(j+1, prev, "expr");
+							if (et.value.type == "error")
+								return et.value;
+							et.end = et.value.end;
+							this.rec.setVariable(et, prev);
+							switch (this.text[et.end]) {
+								case ',' : et.v_next = this.analysis(et.end+1, prev, "type"); break;
+								case ';' : et.v_next = this.empty_tree(et.end); break;
+								default  : return this.error(i, "Synatx error at '" + this.text[i] + "'");
+							}
+							if (et.v_next != null && et.v_next.type == "error")
+								return et.v_next;
+							for (var ev = et ; ev != null && ev.type != "empty" ; ev = ev.v_next) 
+								ev.s_type = s_type + ev.s_type;
+							return et;
+						case ';' :
+							et.type = "var";
+							et.s_type = s_type;
+							et.name = word;
+							et.value = this.empty_tree(j);
+							et.end = j;
+							this.rec.setVariable(et, prev);
+							return et;
+						case ',' :
+							et.type = "var";
+							et.s_type = s_type;
+							et.name = word;
+							et.value = this.empty_tree(j);
+							et.end = j;
+							this.rec.setVariable(et, prev);
+							et.v_next = this.analysis(j+1, prev, "type");
+							if (et.v_next.type == "error")
+								return et.v_next;
+							for (var ev = et ; ev != null && ev.type != "empty" ; ev = ev.v_next) 
+								ev.s_type = s_type + ev.s_type;
+							return et;
 					}
 					return this.error(j, "Synatx error at '" + this.text[j] + "'");
 				case "c_code" :
 					j = this.alphaskip(i);
 					word = this.text.slice(i, j);
 					j = this.spaceskip(j);
+					println("type=c_code j="+j+" word="+word);
 					switch (word) {
 						case "" :
 							switch (this.text[j]) {
 								case "}" : return this.empty_tree(j);
-								case "#" : return this.error(j, "No support with #include / #define");
+								//case "#" : return this.error(j, "No support with #include / #define");
 								default  : return this.error(j, "Synatx error at '" + this.text[j] + "'");
 							}
 						default : 
-							if (getType(word) != null) {
+							if (this.rec.getType(word) != null) {
 								et = this.analysis(j, prev, "type");
 								if (et.type == "error")
 									return et;
@@ -901,12 +978,13 @@
 							if (et.value.type == "error")
 								return et.value;
 							et.end = this.spaceskip(et.value.end+1);
+							//println("type=case end="+et.end+" text[end]="+this.text[et.end]);
 							if (this.text[et.end] != ':')
-								return this.error(et.end, "Excepted ':' after 'case'");
+								return this.error(et.end, "expected ':' after 'case'");
 							break;
 						case "default" :
 							if (this.text[j] != ':')
-								return this.error(j, "Excepted ':' after 'default'");
+								return this.error(j, "expected ':' after 'default'");
 							et.type = "default";
 							et.end = j;
 							break;
@@ -936,7 +1014,7 @@
 					j = this.alphaskip(i);
 					word = this.text.slice(i, j);
 					j = this.spaceskip(j);
-					println("type=type word=" + word + " text[j]=" + this.text[j]);
+					//println("type=type word=" + word + " text[j]=" + this.text[j]);
 					switch (this.text[j]) {
 						case '=' : 
 							et.type = "var";
@@ -948,7 +1026,7 @@
 							this.rec.setVariable(et, prev);
 							switch (this.text[et.end]) {
 								case ',' : et.v_next = this.analysis(et.end+1, prev, "type"); break;
-								case ';' : et.next = this.empty_tree(et.end); break;
+								case ';' : et.v_next = this.empty_tree(et.end); break;
 								default  : return this.error(i, "Synatx error at '" + this.text[i] + "'");
 							}
 							if (et.v_next != null && et.v_next.type == "error")
@@ -959,6 +1037,7 @@
 							et.name = word;
 							et.value = this.empty_tree(j);
 							et.end = j;
+							this.rec.setVariable(et, prev);
 							return et;
 						case ',' :
 							et.type = "var";
@@ -1015,7 +1094,7 @@
 						et.s_type = "void*";
 						et.end = j;
 						if (this.text[j] != ')')
-							return this.error(j, "excepted ')' at the end of function arguments");
+							return this.error(j, "expected ')' at the end of function arguments");
 						return et;
 					}
 					et.type = "f_reg";
@@ -1097,9 +1176,9 @@
 		g_ana.rec = rec;
 		g_ana.error = function(id, msg) {
 			this.rec.error_ct++;
-			println("[" + this.rec.t_line[id] + "," + this.rec.t_column[id] + "] : " + msg);
+			println(this.rec.filename + " [" + this.rec.t_line[id] + "," + this.rec.t_column[id] + "] : " + msg);
 			this.rec.printl(id);
-			alert("");
+			//alert("error");
 			return false;
 		}
 		g_ana.sizeof = function(type) {
@@ -1160,6 +1239,7 @@
 			ec = new Object();
 			ec.name = et.name;
 			ec.type = "expr_CONV";
+			ec.op_st = "UNITL";
 			ec.s_type = s_type;
 			ec.value = et;
 			ec.end = et.end;
@@ -1167,6 +1247,8 @@
 		}
 		g_ana.convType = function(type1, type2) {
 			//println("convType type1="+type1+" type2="+type2);
+			if (type1 == "void*" && this.rec.isStructtype(type2))
+				return true;
 			switch (type1) {
 				case "int" : 
 					if (type2[type2.length-1] == '*')
@@ -1211,7 +1293,7 @@
 				return et;
 			}
 			if (l == r) {
-				if (exprs[l].type.slice(0, 5) != "expr_") {
+				if (exprs[l].type.slice(0, 4) != "expr") {
 					exprs[l].op_st = op_st[exprs[l].type];
 					exprs[l].type = "expr_" + exprs[l].type;
 				}
@@ -1222,19 +1304,20 @@
 				if (op_r[exprs[i].type] != null && (opt == null || op_r[opt.type] < op_r[exprs[i].type])) {
 					opt = exprs[i]; opt_i = i; 
 				}
-			//println("opt_i="+opt_i+" opt_type="+opt.type+" ST="+op_st[opt.type]);
 			if (opt.type == "OFFSET")
 				et.offset = opt.value;
 			if (opt.type == "CONV")
 				et.s_type = opt.s_type;
 			et.end = opt.end;
 			et.type = "expr_" + opt.type;
+			//println("opt_i="+opt_i+" opt_type="+opt.type+" ST="+op_st[opt.type]);
 			switch (op_st[opt.type]) {
 				case "UNITL" : 
 					et.op_st = "UNITL";
 					et.value = this.create_exprTree(exprs, opt_i+1, r);
 					if (et.value.type == "empty")
-						this.error(opt.end, "expected expression after '" + this.rec.text[opt.end] + "' token"); 
+						this.error(opt.end, "expected expression after '" + this.rec.text[opt.end] + "' token");
+					println("UNITL type="+et.type+" op_st="+et.op_st); 
 					return et;
 				case "UNITR" : 
 					et.op_st = "UNITR";
@@ -1280,7 +1363,7 @@
 								this.error(exprs[i].end, "expected expression after '" + this.rec.text[exprs[i].end] + "' token");
 							return et;
 						}
-					return this.error(opt.end, "excepted ':'");
+					return this.error(opt.end, "expected ':'");
 				case "ELSE" :
 					et.op_st = "IF";
 					for (var i = opt_i-2 ; i >= l ; i--)
@@ -1296,14 +1379,14 @@
 								this.error(opt.end, "expected expression after '" + this.text[opt.end] + "' token");
 							return et;
 						}
-					return this.error(opt.end, "excepted '?'");
+					return this.error(opt.end, "expected '?'");
 				default :
 					return this.error(opt.end, "unknown operator");
 			}
 		}
 		
 		g_ana.analysis = function(et, prev) {
-			println("analysis type="+et.type+" prev="+prev+" start");
+			println("analysis type="+et.type+" prev="+prev+" op_st="+et.op_st+" start");
 			var e = null, swit = null, loop = null, s_prev = null;
 			if (et.type.slice(0, 5) == "expr_") {	
 				switch (et.op_st) {
@@ -1315,6 +1398,35 @@
 					 	if (et.cond.s_type != "bool")
 					 		et.cond = this.convTo(et.cond, "bool");
 					 case "BINARY" : 
+					 	if (et.type == "expr_NUMBER") {
+					 		this.analysis(et.value1, prev);
+					 		if (!this.rec.isStructtype(et.value1.s_type)) {
+					 			this.error(et.value1.end, "fixed-point types not supported for this target");
+					 			et.s_type = "error"; break;
+					 		}
+					 		this.analysis(et.value2, et.value1.s_type+"::");
+					 		if (et.value2.type != "expr_VAR") 
+					 			this.error(et.value2.end, "expected struct number after variable '"+et.value1.name+"'");
+					 		et.s_type = et.value2.s_type; 
+					 		break;
+					 	}
+					 	if (et.type == "expr_PNUMBER") {
+					 		this.analysis(et.value1, prev);
+					 		if (et.value1.s_type[et.value1.s_type.length-1] != '*') {
+					 			this.error(et.value1.end, "invalid type argument of '->' (have '"+et.value1.s_type+"')");
+					 			et.s_type = "error"; break;
+					 		}
+					 		var s_type_p = et.value1.s_type.slice(0, et.value1.s_type.length-1);
+					 		if (!this.rec.isStructtype(s_type_p)) {
+					 			this.error(et.value1.end, "request for member '"+et.value2.name+"' in something not a structure or union");
+					 			et.s_type = "error"; break;
+					 		}
+					 		this.analysis(et.value2, s_type_p+"::");
+					 		if (et.value2.type != "expr_VAR") 
+					 			this.error(et.value2.end, "expected struct number after '"+et.value1.name+"'");
+					 		et.s_type = et.value2.s_type; 
+					 		break;
+					 	}
 					 	this.analysis(et.value1, prev);
 					 	this.analysis(et.value2, prev);
 					 	if (et.value1.s_type == "error") {
@@ -1517,6 +1629,14 @@
 									et.s_type = "error";
 								}
 								break;
+							case "REVERSE" :
+								if (et.value.s_type[et.value.s_type.length-1] == '*' ||
+								this.rec.isStructtype(et.value.s_type)) {
+									this.error(et.end, "invalid type argument of unary '-' (have '"+et.value.s_type+"')");
+									et.s_type = "error"; break;
+								}
+								et.s_type = et.value.s_type;
+								break;
 							default:
 								et.s_type = "void";
 								break;
@@ -1525,7 +1645,15 @@
 					default :
 						switch (et.type.slice(5)) {
 							case "VAR" : 
-								et.s_type = et.value.s_type; break;
+								//println("type=var b1"); 
+								et.value = this.rec.getVariable(prev+et.name);
+								if (et.value == null) {
+									this.error(et.end, "uncleared '"+et.name+"'");
+									et.s_type = "error"; break;
+								}	
+								et.s_type = et.value.s_type; 
+								//println("type=var b2"); 
+								break;
 							case "FUNC" : 
 								//println("func name = " + et.value.name+" begin");
 								et.s_type = et.value.s_type; 
@@ -1545,7 +1673,8 @@
 								while (reg1 != null && reg2 != null) {
 									if (reg1.type == "empty" && reg2.type == "empty")
 										break;
-									if (reg1.type != "empty" && reg2.type == "empty") {
+									if (reg1.type != "empty" && reg2.type == "empty"
+									&&  reg1.type != "va_list_args") {
 										this.error(reg2.end, "too few arguments to function '"+et.value.name+"'");
 										this.error(reg1.end, "declared here");
 										break;
@@ -1564,7 +1693,8 @@
 										this.error(reg2.end, "expected '"+type1+"' but argument is of type '"+type2+"'");
 										this.error(reg1.end, "declared here");
 									}
-									reg1 = reg1.next;
+									if (reg1.type != "va_list_args")
+										reg1 = reg1.next;
 									reg2 = reg2.next;
 								}
 								if (reg1 == null && reg2 != null && reg2.type != "empty") {
@@ -1577,9 +1707,17 @@
 									this.error(reg1.end, "declared here");
 								}
 								break;
+							case "ARRAY" : 
+								for (var e = et.text ; e != null ; e = e.next)
+									this.analysis(e, prev);
+								et.s_type = "void*"; 
+							break;
 							case "CONST" : break;
 							case "char" : et.s_type = "char"; break;
-							case "string" : et.s_type = "char*"; break;
+							case "string" : 
+								et.c_addr = ADDR_CONST+this.rec.c_data.length; 
+								this.rec.c_data += et.value+"\0";
+								et.s_type = "char*"; break;
 							default : et.s_type = "void"; break;
 						}
 						break;
@@ -1589,16 +1727,22 @@
 						case "LESS" : case "MORE" : case "NOTLESS" : case "NOTMORE" : case "EQUAL" : case "NOTEQUAL" :
 							et.s_type = "bool";
 					}
-				//println("analysis type="+et.type+" prev="+prev+" end s_type="+et.s_type);
+				println("analysis type="+et.type+" prev="+prev+" end s_type="+et.s_type+" op_st="+et.op_st);
 				return;
 			} 
 			switch (et.type) {
 				case "class" :
 					s_prev = prev+et.name+"::";
 					this.rec.addr_ct[s_prev] = 0;
-					for (et = et.text ; et != null ; et = et.next)
-						this.analysis(et, s_prev);
-					this.rec.sizeof[s_prev.slice(0, s_prev.length-2)] = this.rec.addr_ct[s_prev];
+					this.analysis(et.text, s_prev);
+					//println("class first_sizeof="+this.sizeof(et.text.s_type));
+					var e = et.text ;
+					var h = e;
+					for ( ; e != null ; e = e.v_next ? e.v_next : (h=h.next)) {
+						if (e.type == "empty") continue;
+						e.addr = -e.addr-this.sizeof(et.text.s_type);
+					}
+					this.rec.sizeof[s_prev.slice(0, s_prev.length-2)] = -this.rec.addr_ct[s_prev];
 					break;
 				case "var" :
 					this.analysis(et.value, prev);
@@ -1612,25 +1756,28 @@
 						}
 					}
 					et.instack = (prev == "" ? false : true);
+					this.rec.addr_ct[prev] += this.sizeof(et.s_type)*(prev==""?1:(-1));
 					et.addr = this.rec.addr_ct[prev];
-					this.rec.addr_ct[prev] += this.sizeof(et.s_type);
-					if (et.v_next != null)
+					println("var name="+et.name+" addr="+et.addr);
+					if (et.v_next != null) 
 						this.analysis(et.v_next, prev);
 					break;
 				case "func" :
 					s_prev = prev+et.name+"::";
-					this.rec.addr_ct[s_prev] = -4;
-					for (e = et.reg ; e != null ; e = e.next) {
+					this.rec.addr_ct[s_prev] = 4;
+					println("func name="+et.name);
+					for (e = et.reg ; e != null && e.type != "empty" ; e = e.next) {
 						if (e.type == "va_list_args") {
 							e.instack = true;
 							e.addr = this.rec.addr_ct[s_prev];
 							break;
 						}
-						//println("reg type="+e.s_type+" name="+e.name);
 						e.instack = true;
 						e.addr = this.rec.addr_ct[s_prev]; 
-						this.rec.addr_ct[s_prev] -= this.sizeof(et.s_type);
+						this.rec.addr_ct[s_prev] += this.sizeof(e.s_type);
+						println("reg type="+e.s_type+" name="+e.name+" addr="+e.addr);
 					}
+					println("func end");
 					this.rec.addr_ct[s_prev] = 0;
 					this.analysis(et.text, s_prev);
 					break;
@@ -1642,21 +1789,25 @@
 					if (et.text.length == 0) {
 						et.type = "empty"; break ;
 					}
-					println("expr name="+et.name);
+					//println("expr name="+et.name);
 					for (var i = 0 ; i < et.text.length ; i++) {
-						if (et.text[i].type == "expr") {
-							this.analysis(et.text[i], prev);
-							et.text[i] = et.text[i].exprTree;
-						} else if (et.text[i].type == "MULT" && (i==0 || op_st[et.text[i-1].type] != null))
+						if (et.text[i].type == "MULT" && (i==0 || op_st[et.text[i-1].type] != null))
 							et.text[i].type = "PADDR"; 
-						  else if (et.text[i].type == "AND"  && (i==0 || op_st[et.text[i-1].type] != null))
+						else if (et.text[i].type == "AND"  && (i==0 || op_st[et.text[i-1].type] != null))
 						  	et.text[i].type = "ADDR";
-						println("expr type="+et.text[i].type+" name="+et.text[i].name);
+						else if (et.text[i].type == "SUB"  && (i==0 || op_st[et.text[i-1].type] != null))
+						  	et.text[i].type = "REVERSE";
+						//println("expr type="+et.text[i].type+" name="+et.text[i].name);
 					}
+					var tmp = this.rec.error_ct;
 					et.exprTree = this.create_exprTree(et.text, 0, et.text.length-1);
-					alert("expr");
-					this.analysis(et.exprTree, prev);
-					et.s_type = et.exprTree.s_type;
+					if (this.rec.error_ct == tmp) {
+						//println("exprTree="+et.exprTree);
+						//alert("expr");
+						this.analysis(et.exprTree, prev);
+						et.s_type = et.exprTree.s_type;
+					} else
+						et.s_type = "error";
 					break;
 				case "if" :
 					this.analysis(et.cond,   prev);
@@ -1671,7 +1822,10 @@
 					}
 					break;
 				case "while" :
-					s_prev = prev+et.stmt.bracket+"::";
+					if (et.stmt.bracket != null) {
+						s_prev = prev+et.stmt.bracket+"::";
+						this.rec.loops[s_prev]=et;
+					}
 					this.rec.loops[s_prev]=et;
 					this.analysis(et.cond,   prev);
 					this.analysis(et.stmt,   prev);
@@ -1684,8 +1838,10 @@
 					}
 					break;
 				case "for" :
-					s_prev = prev+et.stmt.bracket+"::";
-					this.rec.loops[s_prev]=et;
+					if (et.stmt.bracket != null) {
+						s_prev = prev+et.stmt.bracket+"::";
+						this.rec.loops[s_prev]=et;
+					}
 					this.analysis(et.s_expr, prev);
 					this.analysis(et.c_expr, prev);
 					this.analysis(et.e_expr, prev);
@@ -1701,6 +1857,7 @@
 				case "switch" :
 					et.cases = {};
 					s_prev = prev+et.bracket+"::";
+					this.rec.addr_ct[s_prev] = this.rec.addr_ct[prev];
 					this.rec.swits[s_prev]=et;
 					this.analysis(et.expr, prev);
 					this.analysis(et.text, s_prev);
@@ -1738,10 +1895,21 @@
 					if (swit == null && loop == null) {
 						this.error(et.end, "break statement not within loop or switch"); break;
 					}
-					if (swit != null)
+					if (swit != null) {
+						if (swit.next == null) {
+							swit.next = new Object();
+							swit.next.type = "empty";
+							swit.next.end = swit.end;
+						}
 						et.b_point = swit.next;
-					else 
+					} else {
+						if (loop.next == null) {
+							loop.next = new Object();
+							loop.next.type = "empty";
+							loop.next.end = swit.end;
+						}
 						et.b_point = loop.next;
+					}
 					break;
 				case "continue" :
 					loop = this.rec.loops[prev];
@@ -1759,7 +1927,9 @@
 				default :
 					break;
 			}
-			//println("analysis type="+et.type+" prev="+prev+" end");
+			if (et.s_type == null)
+				et.s_type = "void";
+			println("analysis type="+et.type+" prev="+prev+" end");
 			if (et.next != null) {
 				//println("analysis next");
 				this.analysis(et.next, prev);
@@ -1768,10 +1938,11 @@
 		// ==================================================================================
 		// 	Instruction generate
 		// ==================================================================================
-		var REG_ZERO = 29, REG_RPC = 30, REG_SP = 31;
+		var REG_ZERO = 30, REG_RPC = 29, REG_SP = 31;
 		var ALU64_ADD = 0x01, ALU64_SUB = 0x02, ALU64_MULT = 0x03, ALU64_DIV = 0x04, ALU64_MOD = 0x05;
 		var ALU64_AND = 0x06, ALU64_OR  = 0x07, ALU64_XOR  = 0x08, ALU64_NOR = 0x09, ALU64_SLT = 0x0A;
 		var ALU64_CONVFLOAT = 0x0B, ALU64_CONVDOUBLE = 0x0C, ALU64_CONVINT = 0x0D, ALU64_CONVLONG = 0x0E;
+		var ALU64_SLL = 0x40, ALU64_SRL = 0x41, ALU64_SRA = 0x42;
 		var ALU64_FLOAT = 0x20, ALU64_DOUBLE = 0x30, ALU64_LONG = 0x10, ALU64_INT = 0x00;
 		
 		var i_gen = new Object();
@@ -1797,31 +1968,34 @@
 			var insts = null;
 			if (l == r) {
 				insts = this.load_i(reg_l, kvs[l].key, s_type);
-				insts = insts.concat(this.beq(kvs[l], reg_c, reg_l)); 
+				insts = insts.concat(this.beq(kvs[l].value, reg_c, reg_l)); 
 				insts = insts.concat(this.b(def));
 			} else if (r-l == 1) {
 				insts = this.load_i(reg_l, kvs[l].key, s_type);
-				insts = insts.concat(this.beq(kvs[l], reg_c, reg_l));
+				insts = insts.concat(this.beq(kvs[l].value, reg_c, reg_l));
 				insts = this.load_i(reg_l, kvs[r].key, s_type);
-				insts = insts.concat(this.beq(kvs[r], reg_c, reg_l)); 
+				insts = insts.concat(this.beq(kvs[r].value, reg_c, reg_l)); 
 				insts = insts.concat(this.b(def));
 			} else {
 				var mid = (l+r)>>1;
 				insts = this.load_i(reg_l, kvs[mid].key, s_type);
-				insts = insts.concat(this.beq(kvs[mid], reg_c, reg_l));
+				insts = insts.concat(this.beq(kvs[mid].value, reg_c, reg_l));
 				insts = insts.concat(this.sub(reg_l, reg_l, reg_c));
 				inst = new Object(); inst.type = "BGTZ"; inst.rs = reg_l; inst.imme = insts.length; insts.push(inst);
 				insts = insts.concat(this.divtable(kvs, def, l, mid-1, reg_c, reg_l, s_type));
-				inst.imme = insts.length-inst.imme;
+				inst.imme = (insts.length-inst.imme-1)*4;
 				insts = insts.concat(this.divtable(kvs, def, mid+1, r, reg_c, reg_l, s_type));
 			}
 			return insts;
 		}
 		i_gen.generate = function(et, prev, addr, reg_l, g_next=true) {
-			//println("generate type="+et.type+" prev="+prev+" addr="+addr+" reg_l="+reg_l+" begin");
+			//println("generate type="+et.type+" prev="+prev+" addr="+addr+" reg_l="+reg_l+" op_st="+et.op_st+" begin");
 			if (et.type != "var") et.addr = addr;
 			var insts = null, inst = null;
 			switch (et.type) {
+				case "include" :
+					insts = this.generate(et.text, prev, addr, reg_l);
+					break;
 				case "func" :
 					insts = this.save_r(REG_RPC, REG_SP, 0, "int");
 					insts = insts.concat(this.generate(et.text, prev+et.name+"::", addr+insts.length, reg_l));
@@ -1833,40 +2007,59 @@
 					break;
 				case "var" :
 					if (et.value.type != "empty") {
+						if (et.value.type == "expr" && et.value.exprTree.type == "expr_ARRAY") {
+							insts = new Array();
+							var e1 = this.rec.getType(et.s_type).text;
+							var e2 = et.value.exprTree.text;
+							var h1 = e1, h2 = e2;
+							while (e1 != null && e2 != null) {
+								if (e1.type != "empty" && e2.type != "empty") { 
+									println("e1="+e1.name+" type="+e1.type+" e2="+e2.name+" type="+e2.type);
+									insts = insts.concat(this.generate(e2, prev, addr+insts.length, reg_l, false));
+									insts = insts.concat(this.save(et, prev, addr+insts.length, reg_l, e1.addr));  
+								}
+								e1 = e1.v_next ? e1.v_next : (h1=h1.next);
+								e2 = e2.v_next ? e2.v_next : (h2=h2.next);
+							}
+							break;
+						}
 						insts = this.generate(et.value, prev, addr, reg_l);
 						insts = insts.concat(this.save(et, prev, addr+insts.length, reg_l));
-						if (et.v_next != null)
-							insts = insts.concat(this.generate(et.v_next, prev, addr+insts.length, reg_l));
 					} else 
 						insts = new Array();
+					if (et.v_next != null)
+						insts = insts.concat(this.generate(et.v_next, prev, addr+insts.length, reg_l));
 					break;
 				case "if" :
 					insts = this.generate(et.cond, prev, addr, reg_l);
 					if (et.e_stmt.type != "empty") {
 						insts = insts.concat(this.blez(et.e_stmt, reg_l));
 						insts = insts.concat(this.generate(et.stmt, prev, addr+insts.length, reg_l));
-						insts = insts.concat(this.b(et.next));
+						inst = new Object(); inst.type = "BLEZ"; inst.rs = REG_ZERO; inst.imme = insts.length; insts.push(inst);
 						insts = insts.concat(this.generate(et.e_stmt, prev, addr+insts.length, reg_l));
+						inst.imme = (insts.length-inst.imme-1)*4;
 					} else {
-						insts = insts.concat(this.blez(et.next, reg_l));
+						inst = new Object(); inst.type = "BLEZ"; inst.rs = reg_l; inst.imme = insts.length; insts.push(inst);
 						insts = insts.concat(this.generate(et.stmt, prev, addr+insts.length, reg_l));
+						inst.imme = (insts.length-inst.imme-1)*4;
 					}
 					break;
 				case "while" :
 					insts = this.generate(et.cond, prev, addr, reg_l);
-					insts = insts.concat(this.blez(et.next, reg_l));
+					inst = new Object(); inst.type = "BLEZ"; inst.rs = reg_l; inst.imme = insts.length; insts.push(inst);
 					insts = insts.concat(this.generate(et.stmt, prev, addr+insts.length, reg_l));
-					insts = insts.concat(this.generate(et.cond, prev, addr+insts.length, reg_l));
-					insts = insts.concat(this.bgtz(et.stmt, reg_l));
+					insts = insts.concat(this.b(et.cond));
+					inst.imme = (insts.length-inst.imme-1)*4;
 					break;
 				case "for" :
 					insts = this.generate(et.s_expr, prev, addr, reg_l);
 					insts = insts.concat(this.generate(et.c_expr, prev, addr+insts.length, reg_l));
-					insts = insts.concat(this.blez(et.next, reg_l));
+					inst = new Object(); inst.type = "BLEZ"; inst.rs = reg_l; inst.imme = insts.length; insts.push(inst);					
 					insts = insts.concat(this.generate(et.stmt, prev, addr+insts.length, reg_l));
-					insts = insts.concat(this.generate(et.e_expr, prev, addr+inst.length, reg_l));
-					insts = insts.concat(this.generate(et.cond, prev, addr+inst.length, reg_l));
-					insts = insts.concat(this.bgtz(et.stmt, reg_l));
+					println("for end_expr");
+					insts = insts.concat(this.generate(et.e_expr, prev, addr+insts.length, reg_l));
+					insts = insts.concat(this.b(et.c_expr));
+					inst.imme = (insts.length-inst.imme-1)*4;
 					break;
 				case "return" :
 					insts = this.generate(et.value, prev, addr, 0);
@@ -1883,7 +2076,6 @@
 					insts = this.generate(et.exprTree, prev, addr, reg_l);
 					break;
 				case "switch" :
-					//println("generate switch");
 					var kvs = new Array();
 					var kv = null;
 					for (var key in et.cases) {
@@ -1897,9 +2089,11 @@
 							kv = kvs[j]; kvs[j] = kvs[j-1]; kvs[j-1] = kv;
 						}
 					insts = this.generate(et.expr, prev, addr, reg_l);
-					var reg_r = reg_l+1;
-					if (et.expr.s_type == "double" || et.expr.s_type == "long") reg_r++; 
-					insts = insts.concat(this.divtable(kvs, et.def, 0, kvs.length-1, reg_l, reg_r, et.expr.s_type));
+					if (kvs.length > 0) {
+						var reg_r = reg_l+1;
+						if (et.expr.s_type == "double" || et.expr.s_type == "long") reg_r++; 
+						insts = insts.concat(this.divtable(kvs, et.def, 0, kvs.length-1, reg_l, reg_r, et.expr.s_type));
+					}
 					insts = insts.concat(this.generate(et.text, prev+et.bracket+"::", addr+insts.length, reg_l));
 					break;
 				case "asm" :
@@ -1940,7 +2134,16 @@
 						switch (et.op_st) {
 							case "BINARY" :
 								insts = new Array();
-								if (et.type.slice(5, 11) != "ASSIGN")
+								if (et.type == "expr_NUMBER") {
+									insts = insts.concat(this.generate_n(et.value2, et.value1, reg_l));
+									break;
+								}
+								if (et.type == "expr_PNUMBER") {
+									insts = insts.concat(this.generate(et.value1, prev, addr+insts.length, reg_l));
+									insts = insts.concat(this.generate_p(et.value2, reg_l, reg_l+1));
+									break;
+								}
+								if (et.type.slice(5) != "ASSIGN")
 									insts = insts.concat(this.generate(et.value1, prev, addr+insts.length, reg_l));
 								var reg_r = reg_l+1;
 								switch (et.s_type) {
@@ -2022,7 +2225,7 @@
 								}
 								if (et.type.slice(5) == "BOOLAND" || 
 									et.type.slice(5) == "BOOLOR") 
-									inst.imme = insts.length-inst.imme;
+									inst.imme = (insts.length-inst.imme-1)*4;
 								break;
 							case "UNITL" : case "UNITR" : case "UNITLR" :
 								insts = this.generate(et.value, prev, addr, reg_l);
@@ -2043,26 +2246,28 @@
 										insts = insts.concat(this.load_r(reg_l, reg_l, 0, et.s_type)); break;
 									case "INC" :
 										if (et.op_st == "UNITL") {
-											insts = insts.concat(this.generate(et.value, prev, addr+insts.length, reg_l));
 											insts = insts.concat(this.add_i(reg_l, reg_l, 1));
 											insts = insts.concat(this.save(et.value, prev, addr+insts.length, reg_l));
 										}
-										if (et.op_et == "UNITR") {
-											insts = insts.concat(this.generate(et.value, prev, addr+insts.length, reg_l));
+										if (et.op_st == "UNITR") {
 											insts = insts.concat(this.save(et.value, prev, addr+insts.length, reg_l));
 											insts = insts.concat(this.add_i(reg_l, reg_l, 1));
 										}
+										break;
 									case "DEC" :
 										if (et.op_st == "UNITL") {
-											insts = insts.concat(this.generate(et.value, prev, addr+insts.length, reg_l));
 											insts = insts.concat(this.sub_i(reg_l, reg_l, 1));
 											insts = insts.concat(this.save(et.value, prev, addr+insts.length, reg_l));
 										}
-										if (et.op_et == "UNITR") {
-											insts = insts.concat(this.generate(et.value, prev, addr+insts.length, reg_l));
+										if (et.op_st == "UNITR") {
 											insts = insts.concat(this.save(et.value, prev, addr+insts.length, reg_l));
 											insts = insts.concat(this.sub_i(reg_l, reg_l, 1));
 										}
+										break;
+									case "REVERSE" :
+										insts = insts.concat(this.generate(et.value, prev, addr+insts.length, reg_l));
+										insts = insts.concat(this.sub(reg_l, REG_ZERO, reg_l, et.s_type));
+										break; 
 									default :
 										break;
 								}
@@ -2070,8 +2275,6 @@
 							default :
 								switch (et.type.slice(5)) {
 									case "VAR" : 
-										println("name="+et.name+" type="+et.s_type+" varname="+et.value.name+" type="+et.value.type+" instack="+et.value.instack+" addr="+et.value.addr);
-										//alert("");
 										if (!et.value.instack)
 											insts = this.load_r(reg_l, REG_Z,  et.value.addr, et.s_type);
 										else
@@ -2079,22 +2282,33 @@
 										break;
 									case "FUNC" :
 										insts = new Array();
+										//insts = insts.concat(this.add_i(REG_SP, REG_SP, this.rec.addr_ct[prev], "int"));
 										for (var i = 0 ; i < reg_l ; i++)
-											insts = insts.concat(this.save_r(i, REG_SP, (i+1)*4, "int"));
-										var er = null, ct = 0;
-										for (er = et.reg_end.prev ; er != null ; ct += this.sizeof(er.s_type), er = er.prev) {
+											insts = insts.concat(this.save_r(i, REG_SP, (-i)*4+this.rec.addr_ct[prev], "int"));
+										var er = null, ct = this.rec.addr_ct[prev];
+										for (er = et.reg_end.prev ; er != null ; ct -= this.sizeof(er.s_type), er = er.prev) {
 											println("func fname="+et.value.name+" name="+er.name+" type="+er.exprTree.type+" s_type="+er.s_type);
 											insts = insts.concat(this.generate(er, prev, addr+insts.length, reg_l, false));
-											insts = insts.concat(this.save_r(reg_l, REG_SP, (reg_l+1)*4+ct, er.s_type));
+											insts = insts.concat(this.save_r(reg_l, REG_SP, (-reg_l)*4+ct, er.s_type));
 										}
-										insts = insts.concat(this.add_i(REG_SP, REG_SP, (reg_l+1)*4+ct));
+										insts = insts.concat(this.add_i(REG_SP, REG_SP, (-reg_l)*4+ct, "int"));
 										inst = new Object(); inst.type = "JAL"; inst.et = et.value; insts.push(inst);
-										insts = insts.concat(this.sub_i(REG_SP, REG_SP, (reg_l+1)*4+ct));
+										insts = insts.concat(this.sub_i(REG_SP, REG_SP, (-reg_l)*4+ct, "int"));
+										inst = new Object(); inst.type = "ADDIU"; inst.rt = reg_l; inst.rs = 0; inst.imme = 0; insts.push(inst);
+										if (et.s_type == "double" || et.s_type == "long") {
+											inst = new Object(); inst.type = "ADDIU"; inst.rt = reg_l+1; inst.rs = 1; inst.imme = 0; insts.push(inst);
+										}
 										for (var i = 0 ; i < reg_l ; i++)
-											insts = insts.concat(this.load_r(i, REG_SP, (i+1)*4));
+											insts = insts.concat(this.load_r(i, REG_SP, (-i)*4+this.rec.addr_ct[prev]));
 										break;
 									case "CONST" :
 										insts = this.load_i(reg_l, et.value, et.s_type);
+										break;
+									case "char" :
+										insts = this.load_i(reg_l, et.value.charCodeAt(0), et.s_type);
+										break;
+									case "string" :
+										insts = this.load_i(reg_l, et.c_addr, et.s_type);
 										break;
 									default :
 										insts = new Array();
@@ -2107,9 +2321,53 @@
 			}
 			if (insts == null) insts = new Array();
 			//println("generate type="+et.type+" prev="+prev+" addr="+addr+" reg_l="+reg_l+" insts="+insts.length+" end");
-			if (g_next && et.next != null) 
+			if (g_next && et.next != null) {
+				//println("generate next");
 				insts = insts.concat(this.generate(et.next, prev, addr+insts.length, reg_l));
+			}
 			return insts;
+		}
+		i_gen.generate_n = function(et2, et1, reg_l, offset=0) {
+			var insts = null, inst = null;
+			if (et2.type.slice(0, 5) == "expr_")
+				switch (et2.type.slice(5)) {
+					case "VAR" :
+						if (!et1.value.instack)
+							insts = this.load_r(reg_l, REG_ZERO, et1.value.addr+et2.value.addr+offset, et2.s_type);
+						else
+							insts = this.load_r(reg_l, REG_SP,   et1.value.addr+et2.value.addr+offset, et2.s_type);
+						return insts;
+					case "NUMBER" :
+						return this.generate_n(et2.value2, et1, reg_l, offset+et2.addr);
+					case "PNUMBER" :
+						insts = this.generate_n(et2.value1, et1, reg_l, offset+et2.addr);
+						insts = insts.concat(this.generate_p(et2.value2, reg_l, reg_l+1));
+						inst = new Object(); inst.rt = reg_l; inst.rs = reg_l+1; inst.imme = 0; insts.push(inst);
+						return insts;
+					default :
+						return new Array();
+				}
+			return new Array();
+		}
+		i_gen.generate_p = function(et, base, reg_l) {
+			var insts = null, inst = null;
+			if (et.type.slice(0, 5) == "expr_") 
+				switch (et.type.slice(5)) {
+					case "VAR" :
+						return this.load_r(reg_l, base, et.value.addr, et.s_type);
+					case "NUMBER" :
+						insts = this.add_i(base, base, et.value1.addr, "int");
+						insts = insts.concat(this.generate_p(et, base, reg_l));
+						return insts;
+					case "PNUMBER" :
+						insts = this.generate_p(et.value1, base, reg_l);
+						insts = insts.concat(this.generate_p(et.value2, reg_l, reg_l+1));
+						inst = new Object(); inst.rt = reg_l; inst.rs = reg_l+1; inst.imme = 0; insts.push(inst);
+						return insts;
+					default :
+						return new Array();
+				}
+			return new Array();
 		}
 		i_gen.addr = function(et, prev, addr, reg) {
 			var insts = new Array();
@@ -2134,37 +2392,93 @@
 				}
 			return insts;
 		}
-		i_gen.save = function(et, prev, addr, reg) {
+		i_gen.save = function(et, prev, addr, reg, offset=0) {
 			var insts = null;
 			var reg_r = reg+1;
 			switch (et.s_type) {
 				case "double" : case "long" : reg_r++;
 			}
+			if (et.type == "var") {
+				if (!et.instack) 
+					insts = this.save_r(reg, REG_ZERO, et.addr+offset, et.s_type);
+				else 
+					insts = this.save_r(reg, REG_SP,   et.addr+offset, et.s_type);
+				return insts;	
+			}
 			if (et.type.slice(0, 5) == "expr_") 
 				switch (et.type.slice(5)) {
+					case "NUMBER" :
+						return this.save_n(et.value2, et.value1, reg, offset);
+					case "PNUMBER" :
+						insts = this.generate(et.value1, prev, addr, reg+1);
+						if (offset != 0) insts = insts.concat(this.add_i(reg+1, reg+1, offset));
+						insts = insts.concat(this.save_p(et.value2, reg+1, reg, reg+2));
+						inst = new Object(); inst.type = "ADDIU"; inst.rt = reg; inst.rs = reg+1; inst.imme = 0; insts.push(inst);
+						return insts;
 					case "VAR" :
 						if (!et.value.instack)
-							insts = this.save_r(reg, REG_ZERO,  et.value.addr, et.s_type);
+							insts = this.save_r(reg, REG_ZERO, et.value.addr+offset, et.s_type);
 						else
-							insts = this.save_r(reg, REG_SP, et.value.addr, et.s_type);
+							insts = this.save_r(reg, REG_SP,   et.value.addr+offset, et.s_type);
 						return insts;
 					case "PADDR" :
 						insts = this.generate(et.value, addr, prev, reg_r);
-						insts = insts.concat(this.save_r(reg, reg_r, 0, et.s_type));
+						insts = insts.concat(this.save_r(reg, reg_r, offset, et.s_type));
 						return insts;
 					case "OFFSET" :
 						insts = this.generate(et.value, addr, prev, reg_r);
 						insts = insts.concat(this.generate(et.offset, addr+insts.length, prev, reg_r+1));
 						insts = insts.concat(this.add(reg_r, reg_r, reg_r+1, "int"));
-						insts = insts.concat(this.save_r(reg, reg_r, 0));
+						insts = insts.concat(this.save_r(reg, reg_r, offset, et.s_type));
 						return insts;
 					default :
 						insts = new Array();
 						return insts;
 				}
 		}
+		i_gen.save_n = function(et2, et1, reg, offset=0) {
+			//println("save_n et2="+et2.value.name+" addr="+et2.value.addr+" et1="+et1.name+" s_type="+et1.s_type+" addr="+et1.value.addr+" offset="+offset);
+			var insts = null, inst = null;
+			if (et2.type.slice(0, 5) == "expr_")
+				switch (et2.type.slice(5)) {
+					case "VAR" :
+						if (!et1.value.instack)
+							insts = this.save_r(reg, REG_ZERO, et1.value.addr+et2.value.addr+offset, et2.s_type);
+						else
+							insts = this.save_r(reg, REG_SP,   et1.value.addr+et2.value.addr+offset, et2.s_type);
+						return insts;
+					case "NUMBER" :
+						return this.save_n(et2.value2, et1, reg, offset+et2.addr);
+					case "PNUMBER" :
+						insts = this.generate_n(et2.value1, et1, reg+1, offset+et2.addr);
+						insts = insts.concat(this.save_p(et2.value2, reg+1, reg, reg+2));
+						return insts;
+					default :
+						return new Array();
+				}
+			return new Array();
+		}
+		i_gen.save_p = function(et, base, val, reg_l) {
+			var insts = null, inst = null;
+			if (et.type.slice(0, 5) == "expr_") 
+				switch (et.type.slice(5)) {
+					case "VAR" :
+						return this.save_r(val, base, et.value.addr, et.s_type);
+					case "NUMBER" :
+						insts = this.add_i(base, base, et.value1.addr, "int");
+						insts = insts.concat(this.save_p(et, base, val, reg_l));
+						return insts;
+					case "PNUMBER" :
+						insts = this.generate_p(et.value1, base, reg_l);
+						insts = insts.concat(this.save_p(et.value2, reg_l, val, reg_l+1));
+						return insts;
+					default :
+						return new Array();
+				}
+			return new Array();
+		}
 		i_gen.call_alu64 = function(rd, rs, rt, op_code) {
-			println("call_alu64 begin");
+			//println("call_alu64 begin");
 			var insts = new Array(), inst = null;
 			if (((op_code>>4)<<4) == ALU64_INT || ((op_code>>4)<<4) == ALU64_FLOAT) {
 				inst = new Object(); inst.type = "SW";   inst.rt = rs;       inst.rs = REG_ZERO; inst.imme = 0xbf08; insts.push(inst);
@@ -2187,11 +2501,10 @@
 			inst = new Object(); inst.type = "BLEZ"; inst.rs = rd; inst.imme = 0xFFFE; insts.push(inst);
 			inst = new Object(); inst.type = "ADDIU";inst.rt = rd; inst.rs = REG_ZERO; inst.imme = 0; 	   insts.push(inst);   
 			inst = new Object(); inst.type = "SB";   inst.rt = rd; inst.rs = REG_ZERO; inst.imme = 0xbf1C; insts.push(inst);	
-			inst = new Object(); inst.type = "LW";   inst.rs = rd; inst.rs = REG_ZERO; inst.imme = 0xbf20; insts.push(inst);
+			inst = new Object(); inst.type = "LW";   inst.rt = rd; inst.rs = REG_ZERO; inst.imme = 0xbf20; insts.push(inst);
 			if (((op_code>>4)<<4) == ALU64_LONG || ((op_code>>4)<<4) == ALU64_DOUBLE || (op_code&15) == ALU64_CONVDOUBLE) {
-				inst = new Object(); inst.type = "LW";   inst.rs = rd+1; inst.rs = REG_ZERO; inst.imme = 0xbf24; insts.push(inst);
+				inst = new Object(); inst.type = "LW";   inst.rt = rd+1; inst.rs = REG_ZERO; inst.imme = 0xbf24; insts.push(inst);
 			}
-			println("call_alu64 end");
 			return insts;
 		}
 		// basic procedure
@@ -2237,15 +2550,15 @@
 					conv.push(t);
 					break;
 				case "long" :
-					conv.push(t>>32); conv.push(t&((1<<32)-1)); break;
+					conv.push(imme>>32); conv.push(imme&((1<<32)-1)); break;
 				case "short" :
-					conv.push(t&65535); break;
+					conv.push(imme&65535); break;
 				case "char" :
-					conv.push(t&255); break;
+					conv.push(imme&255); break;
 				case "bool" :
-					conv.push(t&1); break;
+					conv.push(imme&1); break;
 				default :
-					conv.push(t); break;
+					conv.push(imme); break;
 			}
 			return conv;
 		}
@@ -2254,6 +2567,7 @@
 			var insts = new Array();
 			var inst = null, conv = null;
 			conv = this.conv_i(imme, s_type);
+			//println("conv[0]="+conv[0]+" conv[1]="+conv[1]);
 			inst = new Object(); inst.type = "ADDIU"; inst.rt = rt;   inst.rs = REG_ZERO; inst.imme = conv[0]; insts.push(inst);
 			switch (s_type) {
 				case "double" : case "long" :
@@ -2277,12 +2591,12 @@
 					inst = new Object(); inst.type = "ANDI";  inst.rs = rt; inst.rt = rt; inst.imme = 1;    insts.push(inst);
 					break;
 				case "char" :
-					inst = new Object(); inst.type = "SLL";   inst.rs = rt; inst.rt = rt; inst.imme = 24;   insts.push(inst);
-					inst = new Object(); inst.type = "SRL";   inst.rs = rt; inst.rt = rt; inst.imme = 24;   insts.push(inst);
+					inst = new Object(); inst.type = "SLL";   inst.rd = rt; inst.rt = rt; inst.imme = 24;   insts.push(inst);
+					inst = new Object(); inst.type = "SRL";   inst.rd = rt; inst.rt = rt; inst.imme = 24;   insts.push(inst);
 					break;
 				case "short" :
-					inst = new Object(); inst.type = "SLL";   inst.rs = rt; inst.rt = rt; inst.imme = 16;   insts.push(inst);
-					inst = new Object(); inst.type = "SRL";   inst.rs = rt; inst.rt = rt; inst.imme = 16;   insts.push(inst);
+					inst = new Object(); inst.type = "SLL";   inst.rd = rt; inst.rt = rt; inst.imme = 16;   insts.push(inst);
+					inst = new Object(); inst.type = "SRL";   inst.rd = rt; inst.rt = rt; inst.imme = 16;   insts.push(inst);
 					break;
 				default :
 					break;
@@ -2330,44 +2644,16 @@
 					break;
 				case "char" :
 					inst = new Object(); inst.type = "ADDIU"; inst.rt = rt;	inst.rs = rs; inst.imme = imme;	insts.push(inst);
-					inst = new Object(); inst.type = "SLL";   inst.rs = rt; inst.rt = rt; inst.imme = 24;   insts.push(inst);
-					inst = new Object(); inst.type = "SRL";   inst.rs = rt; inst.rt = rt; inst.imme = 24;   insts.push(inst);
+					inst = new Object(); inst.type = "SLL";   inst.rd = rt; inst.rt = rt; inst.imme = 24;   insts.push(inst);
+					inst = new Object(); inst.type = "SRL";   inst.rd = rt; inst.rt = rt; inst.imme = 24;   insts.push(inst);
 					break;
 				case "short" :
 					inst = new Object(); inst.type = "ADDIU"; inst.rt = rt;	inst.rs = rs; inst.imme = imme;	insts.push(inst);
-					inst = new Object(); inst.type = "SLL";   inst.rs = rt; inst.rt = rt; inst.imme = 16;   insts.push(inst);
-					inst = new Object(); inst.type = "SRL";   inst.rs = rt; inst.rt = rt; inst.imme = 16;   insts.push(inst);
+					inst = new Object(); inst.type = "SLL";   inst.rd = rt; inst.rt = rt; inst.imme = 16;   insts.push(inst);
+					inst = new Object(); inst.type = "SRL";   inst.rd = rt; inst.rt = rt; inst.imme = 16;   insts.push(inst);
 					break;
 				default :
-					break;
-			}
-			return insts;
-		}
-		i_gen.sub_i = function(rt, rs, imme, s_type) {
-			var insts = new Array();
-			var inst = null;
-			switch (s_type) {
-				case "float" : 
-					return this.call_alu64_i(rt, rs, imme, ALU64_SUB|ALU64_FLOAT);
-				case "double" : 
-					return this.call_alu64_i(rt, rs, imme, ALU64_SUB|ALU64_DOUBLE);
-				case "long" :
-					return this.call_alu64_i(rt, rs, imme, ALU64_SUB|ALU64_LONG);
-				case "bool" :
-					inst = new Object(); inst.type = "SUBIU"; inst.rt = rt;	inst.rs = rs; inst.imme = imme;	insts.push(inst);
-					inst = new Object(); inst.type = "ANDI";  inst.rs = rt; inst.rt = rt; inst.imme = 1;    insts.push(inst);
-					break;
-				case "char" :
-					inst = new Object(); inst.type = "SUBIU"; inst.rt = rt;	inst.rs = rs; inst.imme = imme;	insts.push(inst);
-					inst = new Object(); inst.type = "SLL";   inst.rs = rt; inst.rt = rt; inst.imme = 24;   insts.push(inst);
-					inst = new Object(); inst.type = "SRL";   inst.rs = rt; inst.rt = rt; inst.imme = 24;   insts.push(inst);
-					break;
-				case "short" :
-					inst = new Object(); inst.type = "SUBIU"; inst.rt = rt;	inst.rs = rs; inst.imme = imme;	insts.push(inst);
-					inst = new Object(); inst.type = "SLL";   inst.rs = rt; inst.rt = rt; inst.imme = 16;   insts.push(inst);
-					inst = new Object(); inst.type = "SRL";   inst.rs = rt; inst.rt = rt; inst.imme = 16;   insts.push(inst);
-					break;
-				default :
+					inst = new Object(); inst.type = "ADDIU"; inst.rt = rt;	inst.rs = rs; inst.imme = imme;	insts.push(inst);
 					break;
 			}
 			return insts;
@@ -2389,12 +2675,12 @@
 				case "bool" :
 					inst = new Object(); inst.type = "ANDI"; inst.rs = rd; inst.rt = rd; inst.imme = 1; insts.push(inst);
 				case "char" :
-					inst = new Object(); inst.type = "SLL"; inst.rs = rd; inst.rt = rd; inst.imme = 24; insts.push(inst);
-					inst = new Object(); inst.type = "SRL"; inst.rs = rd; inst.rt = rd; inst.imme = 24; insts.push(inst);
+					inst = new Object(); inst.type = "SLL"; inst.rd = rd; inst.rt = rd; inst.imme = 24; insts.push(inst);
+					inst = new Object(); inst.type = "SRL"; inst.rd = rd; inst.rt = rd; inst.imme = 24; insts.push(inst);
 					break;
 				case "short" :
-					inst = new Object(); inst.type = "SLL"; inst.rs = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
-					inst = new Object(); inst.type = "SRL"; inst.rs = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
+					inst = new Object(); inst.type = "SLL"; inst.rd = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
+					inst = new Object(); inst.type = "SRL"; inst.rd = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
 					break;
 				default :
 					break;
@@ -2415,12 +2701,12 @@
 				case "bool" :
 					inst = new Object(); inst.type = "ANDI"; inst.rs = rd; inst.rt = rd; inst.imme = 1; insts.push(inst);
 				case "char" :
-					inst = new Object(); inst.type = "SLL"; inst.rs = rd; inst.rt = rd; inst.imme = 24; insts.push(inst);
-					inst = new Object(); inst.type = "SRL"; inst.rs = rd; inst.rt = rd; inst.imme = 24; insts.push(inst);
+					inst = new Object(); inst.type = "SLL"; inst.rd = rd; inst.rt = rd; inst.imme = 24; insts.push(inst);
+					inst = new Object(); inst.type = "SRL"; inst.rd = rd; inst.rt = rd; inst.imme = 24; insts.push(inst);
 					break;
 				case "short" :
-					inst = new Object(); inst.type = "SLL"; inst.rs = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
-					inst = new Object(); inst.type = "SRL"; inst.rs = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
+					inst = new Object(); inst.type = "SLL"; inst.rd = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
+					inst = new Object(); inst.type = "SRL"; inst.rd = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
 					break;
 				default :
 					break;
@@ -2437,12 +2723,12 @@
 				case "bool" :
 					inst = new Object(); inst.type = "ANDI"; inst.rs = rd; inst.rt = rd; inst.imme = 1; insts.push(inst);
 				case "char" :
-					inst = new Object(); inst.type = "SLL"; inst.rs = rd; inst.rt = rd; inst.imme = 24; insts.push(inst);
-					inst = new Object(); inst.type = "SRL"; inst.rs = rd; inst.rt = rd; inst.imme = 24; insts.push(inst);
+					inst = new Object(); inst.type = "SLL"; inst.rd = rd; inst.rt = rd; inst.imme = 24; insts.push(inst);
+					inst = new Object(); inst.type = "SRL"; inst.rd = rd; inst.rt = rd; inst.imme = 24; insts.push(inst);
 					break;
 				case "short" :
-					inst = new Object(); inst.type = "SLL"; inst.rs = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
-					inst = new Object(); inst.type = "SRL"; inst.rs = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
+					inst = new Object(); inst.type = "SLL"; inst.rd = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
+					inst = new Object(); inst.type = "SRL"; inst.rd = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
 					break;
 				default :
 					break;
@@ -2457,12 +2743,12 @@
 				case "long" :
 					return this.call_alu64(rd, rs, rt, ALU64_OR|ALU64_LONG);
 				case "char" :
-					inst = new Object(); inst.type = "SLL"; inst.rs = rd; inst.rt = rd; inst.imme = 24; insts.push(inst);
-					inst = new Object(); inst.type = "SRL"; inst.rs = rd; inst.rt = rd; inst.imme = 24; insts.push(inst);
+					inst = new Object(); inst.type = "SLL"; inst.rd = rd; inst.rt = rd; inst.imme = 24; insts.push(inst);
+					inst = new Object(); inst.type = "SRL"; inst.rd = rd; inst.rt = rd; inst.imme = 24; insts.push(inst);
 					break;
 				case "short" :
-					inst = new Object(); inst.type = "SLL"; inst.rs = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
-					inst = new Object(); inst.type = "SRL"; inst.rs = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
+					inst = new Object(); inst.type = "SLL"; inst.rd = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
+					inst = new Object(); inst.type = "SRL"; inst.rd = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
 					break;
 				default :
 					break;
@@ -2479,12 +2765,12 @@
 				case "bool" :
 					inst = new Object(); inst.type = "ANDI"; inst.rs = rd; inst.rt = rd; inst.imme = 1; insts.push(inst);
 				case "char" :
-					inst = new Object(); inst.type = "SLL"; inst.rs = rd; inst.rt = rd; inst.imme = 24; insts.push(inst);
-					inst = new Object(); inst.type = "SRL"; inst.rs = rd; inst.rt = rd; inst.imme = 24; insts.push(inst);
+					inst = new Object(); inst.type = "SLL"; inst.rd = rd; inst.rt = rd; inst.imme = 24; insts.push(inst);
+					inst = new Object(); inst.type = "SRL"; inst.rd = rd; inst.rt = rd; inst.imme = 24; insts.push(inst);
 					break;
 				case "short" :
-					inst = new Object(); inst.type = "SLL"; inst.rs = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
-					inst = new Object(); inst.type = "SRL"; inst.rs = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
+					inst = new Object(); inst.type = "SLL"; inst.rd = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
+					inst = new Object(); inst.type = "SRL"; inst.rd = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
 					break;
 				default :
 					break;
@@ -2501,12 +2787,12 @@
 				case "bool" :
 					inst = new Object(); inst.type = "ANDI"; inst.rs = rd; inst.rt = rd; inst.imme = 1; insts.push(inst);
 				case "char" :
-					inst = new Object(); inst.type = "SLL"; inst.rs = rd; inst.rt = rd; inst.imme = 24; insts.push(inst);
-					inst = new Object(); inst.type = "SRL"; inst.rs = rd; inst.rt = rd; inst.imme = 24; insts.push(inst);
+					inst = new Object(); inst.type = "SLL"; inst.rd = rd; inst.rt = rd; inst.imme = 24; insts.push(inst);
+					inst = new Object(); inst.type = "SRL"; inst.rd = rd; inst.rt = rd; inst.imme = 24; insts.push(inst);
 					break;
 				case "short" :
-					inst = new Object(); inst.type = "SLL"; inst.rs = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
-					inst = new Object(); inst.type = "SRL"; inst.rs = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
+					inst = new Object(); inst.type = "SLL"; inst.rd = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
+					inst = new Object(); inst.type = "SRL"; inst.rd = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
 					break;
 				default :
 					break;
@@ -2514,6 +2800,7 @@
 			return insts;
 		}
 		i_gen.mult = function(rd, rs, rt, s_type) {
+			println("mult s_type="+s_type+" begin");
 			var insts = new Array();
 			var inst = null;
 			inst = new Object(); inst.type = "MULT"; inst.rs = rs; inst.rt = rt; insts.push(inst);
@@ -2528,8 +2815,8 @@
 				case "bool" :
 					inst = new Object(); inst.type = "ANDI"; inst.rs = rd; inst.rt = rd; inst.imme = 1; insts.push(inst);
 				case "short" :
-					inst = new Object(); inst.type = "SLL"; inst.rs = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
-					inst = new Object(); inst.type = "SRL"; inst.rs = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
+					inst = new Object(); inst.type = "SLL"; inst.rd = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
+					inst = new Object(); inst.type = "SRL"; inst.rd = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
 					break;
 				default :
 					break;
@@ -2549,8 +2836,8 @@
 				case "long" :
 					return this.call_alu64(rd, rs, rt, ALU64_DIV|ALU64_LONG);
 				case "short" :
-					inst = new Object(); inst.type = "SLL"; inst.rs = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
-					inst = new Object(); inst.type = "SRL"; inst.rs = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
+					inst = new Object(); inst.type = "SLL"; inst.rd = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
+					inst = new Object(); inst.type = "SRL"; inst.rd = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
 					break;
 				default :
 					break;
@@ -2566,8 +2853,74 @@
 				case "long" :
 					return this.call_alu64(rd, rs, rt, ALU64_MOD|ALU64_LONG);
 				case "short" :
-					inst = new Object(); inst.type = "SLL"; inst.rs = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
-					inst = new Object(); inst.type = "SRL"; inst.rs = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
+					inst = new Object(); inst.type = "SLL"; inst.rd = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
+					inst = new Object(); inst.type = "SRL"; inst.rd = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
+					break;
+				default :
+					break;
+			}
+			return insts;
+		}
+		i_gen.sll = function(rd, rt, imme, s_type) {
+			var insts = new Array();
+			var inst = null;
+			inst = new Object(); inst.type = "SLL"; inst.rd = rd; inst.rs = rs; inst.imme = imme; insts.push(inst);
+			switch (s_type) {
+				case "long" :
+					return this.call_alu64(rd, rs, rt, ALU64_SLL|ALU64_LONG);
+				case "bool" :
+					inst = new Object(); inst.type = "ANDI"; inst.rs = rd; inst.rt = rd; inst.imme = 1; insts.push(inst);
+				case "char" :
+					inst = new Object(); inst.type = "SLL"; inst.rd = rd; inst.rt = rd; inst.imme = 24; insts.push(inst);
+					inst = new Object(); inst.type = "SRL"; inst.rd = rd; inst.rt = rd; inst.imme = 24; insts.push(inst);
+					break;
+				case "short" :
+					inst = new Object(); inst.type = "SLL"; inst.rd = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
+					inst = new Object(); inst.type = "SRL"; inst.rd = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
+					break;
+				default :
+					break;
+			}
+			return insts;
+		}
+		i_gen.srl = function(rd, rt, imme, s_type) {
+			var insts = new Array();
+			var inst = null;
+			inst = new Object(); inst.type = "SRL"; inst.rd = rd; inst.rs = rs; inst.imme = imme; insts.push(inst);
+			switch (s_type) {
+				case "long" :
+					return this.call_alu64(rd, rs, rt, ALU64_SRL|ALU64_LONG);
+				case "bool" :
+					inst = new Object(); inst.type = "ANDI"; inst.rs = rd; inst.rt = rd; inst.imme = 1; insts.push(inst);
+				case "char" :
+					inst = new Object(); inst.type = "SLL"; inst.rd = rd; inst.rt = rd; inst.imme = 24; insts.push(inst);
+					inst = new Object(); inst.type = "SRL"; inst.rd = rd; inst.rt = rd; inst.imme = 24; insts.push(inst);
+					break;
+				case "short" :
+					inst = new Object(); inst.type = "SLL"; inst.rd = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
+					inst = new Object(); inst.type = "SRL"; inst.rd = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
+					break;
+				default :
+					break;
+			}
+			return insts;
+		}
+		i_gen.sra = function(rd, rt, imme, s_type) {
+			var insts = new Array();
+			var inst = null;
+			inst = new Object(); inst.type = "SRA"; inst.rd = rd; inst.rs = rs; inst.imme = imme; insts.push(inst);
+			switch (s_type) {
+				case "long" :
+					return this.call_alu64(rd, rs, rt, ALU64_SRA|ALU64_LONG);
+				case "bool" :
+					inst = new Object(); inst.type = "ANDI"; inst.rs = rd; inst.rt = rd; inst.imme = 1; insts.push(inst);
+				case "char" :
+					inst = new Object(); inst.type = "SLL"; inst.rd = rd; inst.rt = rd; inst.imme = 24; insts.push(inst);
+					inst = new Object(); inst.type = "SRL"; inst.rd = rd; inst.rt = rd; inst.imme = 24; insts.push(inst);
+					break;
+				case "short" :
+					inst = new Object(); inst.type = "SLL"; inst.rd = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
+					inst = new Object(); inst.type = "SRL"; inst.rd = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
 					break;
 				default :
 					break;
@@ -2652,54 +3005,61 @@
 			return insts;
 		}
 		i_gen.b = function(et) {
+			//println("b et.type="+et.type);
 			var insts = new Array();
 			var inst = null;
 			inst = new Object(); inst.type = "BLEZ"; inst.rs = REG_ZERO; inst.et = et; insts.push(inst);
 			return insts;
 		}
 		i_gen.blez = function(et, rs) {
+			//println("blez et.type="+et.type);
 			var insts = new Array();
 			var inst = null;
 			inst = new Object(); inst.type = "BLEZ"; inst.rs = rs; inst.et = et; insts.push(inst);
 			return insts;
 		}
 		i_gen.bgez = function(et, rs) {
+			//println("bgez et.type="+et.type);
 			var insts = new Array();
 			var inst = null;
 			inst = new Object(); inst.type = "BGEZ"; inst.rs = rs; inst.et = et; insts.push(inst);
 			return insts;
 		}
 		i_gen.bltz = function(et, rs) {
+			//println("bltz et.type="+et.type);
 			var insts = new Array();
 			var inst = null;
 			inst = new Object(); inst.type = "BLTZ"; inst.rs = rs; inst.et = et; insts.push(inst);
 			return insts;
 		}
 		i_gen.bgtz = function(et, rs) {
+			//println("bgtz et.type="+et.type);
 			var insts = new Array();
 			var inst = null;
 			inst = new Object(); inst.type = "BGTZ"; inst.rs = rs; inst.et = et; insts.push(inst);
 			return insts;
 		}
 		i_gen.beq = function(et, rs, rt) {
+			//println("beq et.type="+et.type);
 			var insts = new Array();
 			var inst = null;
 			inst = new Object(); inst.type = "BEQ"; inst.rs = rs; inst.rt = rt; inst.et = et; insts.push(inst);
 			return insts;
 		}
 		i_gen.bne = function(et, rs, rt) {
+			//println("bne et.type="+et.type);
 			var insts = new Array();
 			var inst = null;
 			inst = new Object(); inst.type = "BNE"; inst.rs = rs; inst.rt = rt; inst.et = et; insts.push(inst);
 			return insts;
 		}
 		i_gen.conv = function(rd, rd_type, rs, rs_type) {
-			println("conv rd="+rd+" type="+rd_type+" rs="+rs+" rs_type="+rs_type+" begin");
+			//println("conv rd="+rd+" type="+rd_type+" rs="+rs+" rs_type="+rs_type+" begin");
 			var insts = new Array();
 			var inst = null;
 			if (rd_type == "int") 
 				switch (rs_type) {
-					case "long" : case "short" :case "char" : case "int" :
+					case "long" : case "short" :case "char" : case "int": case "bool":
 						if (rs == rd) return insts;
 						inst = new Object(); inst.type = "ADDIU"; inst.rs = rs; inst.rt = rd; inst.imme = 0; insts.push(inst); 
 						return insts;
@@ -2766,8 +3126,8 @@
 							if (rd != rs) {
 								inst = new Object(); inst.type = "ADDIU"; inst.rs = rs; inst.rt = rd; inst.imme=0; insts.push(inst);
 							}
-							inst = new Object(); inst.type = "SLL"; inst.rs = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
-							inst = new Object(); inst.type = "SRL"; inst.rs = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
+							inst = new Object(); inst.type = "SLL"; inst.rd = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
+							inst = new Object(); inst.type = "SRL"; inst.rd = rd; inst.rt = rd; inst.imme = 16; insts.push(inst);
 							break;
 						default :
 							if (rs_type[rs_type.length-1] == '*') {
@@ -2783,7 +3143,20 @@
 					insts = insts.concat(this.conv(rd, rd_type, rd, "int"));
 					break;
 			}
-			println("conv rd="+rd+" type="+rd_type+" rs="+rs+" rs_type="+rs_type+" end");
+			//println("conv rd="+rd+" type="+rd_type+" rs="+rs+" rs_type="+rs_type+" end");
+			return insts;
+		}
+		i_gen.initialize = function() {
+			var insts = new Array();
+			var inst = null;
+			inst = new Object(); inst.type = "XOR"; inst.rs = REG_ZERO; inst.rt = REG_ZERO; inst.rd = REG_ZERO; insts.push(inst);
+			inst = new Object(); inst.type = "ADDIU"; inst.rt = REG_SP; inst.rs = REG_ZERO; inst.imme = 0x8000; insts.push(inst);
+			println("c_data = " + this.rec.c_data); alert("");
+			for (var i = 0 ; i < this.rec.c_data.length ; i++) {
+				inst = new Object(); inst.type = "ADDIU"; inst.rt = 0; inst.rs = REG_ZERO; 
+				inst.imme = this.rec.c_data.charCodeAt(i); insts.push(inst);
+				inst = new Object(); inst.type = "SB"; inst.rt = 0; inst.rs = REG_ZERO; inst.imme = ADDR_CONST+i; insts.push(inst);
+			}
 			return insts;
 		}
 		i_gen.find_main = function(et) {
@@ -2791,13 +3164,19 @@
 			var inst = null;
 			for ( ; et != null ; et = et.next) 
 				if (et.type == "func" && et.name == "main") {
-					inst = new Object(); inst.type = "J"; inst.et = et; insts.push(inst); return insts;
+					inst = new Object(); inst.type = "JAL"; inst.et = et; insts.push(inst); 
+					inst = new Object(); inst.type = "ADDIU"; inst.rt = 0; inst.rs = REG_ZERO; inst.imme = 0xFFFF; insts.push(inst);
+					inst = new Object(); inst.type = "ADDIU"; inst.rt = 1; inst.rs = REG_ZERO; inst.imme = 0x0011; insts.push(inst);
+					inst = new Object(); inst.type = "MTC0";  inst.rd = 1; inst.rt = 0; insts.push(inst);
+					inst = new Object(); inst.type = "SYSCALL"; insts.push(inst);
+					inst = new Object(); inst.type = "NOP"; insts.push(inst);
+					return insts;
 				}
 			println("error : undefined reference to `main'");
+			this.rec.error_ct++;
 			return null;
 		}
 		i_gen.determine_pc = function(insts) {
-			//println("determine_pc begin");
 			var inst = null;
 			for (var pc = 0 ; pc < insts.length ; pc++) {	
 				inst = insts[pc];
@@ -2806,7 +3185,6 @@
 					inst.type = "NOP";
 					insts[pc] = inst;
 				}
-				println("inst type="+inst.type+" addr="+(inst.et != null ? inst.et.addr : "this"));
 				if (inst.et != null) {
 					if (inst.type[0] == 'B') 
 						inst.imme = (inst.et.addr-pc-1)*4;
@@ -2823,6 +3201,16 @@
 		ui.w_ana = w_ana;
 		ui.g_ana = g_ana;
 		ui.i_gen = i_gen;
+		ui.xmlHttp = new XMLHttpRequest();
+		ui.xmlHttp.onreadystatechange = function() {
+			println("b1 state="+this.readyState+" status="+this.status);
+  			if (this.readyState==4 && this.status==0) {
+    			ui.rec.setText(this.responseText+'$');
+				println("complete reading c code '" + ui.rec.filename + "'");
+				if (ui.b_ls) ui.printAll(ui.rec.text);
+				ui.input_active();
+			}
+		}
 		ui.load = function(para) {
 			ui.input_paused();
 			var i = para.indexOf(" ");
@@ -2830,31 +3218,36 @@
 			var filename = para.slice(0, i);
 			para = para.slice(i);
 			var word = "";
-			var b_ls = false;
+			this.b_ls = false;
 			while (para.length != 0) {
 				var i = para.indexOf(" ", 1);
 				if (i == -1) i = para.length;
 				word = para.slice(1, i);
 				para = para.slice(i);
-				if (word == "-ls") b_ls = true;
+				if (word == "-ls") this.b_ls = true;
 			}
-			var xmlHttp = new XMLHttpRequest();
-			xmlHttp.open("GET", filename, false);
-			xmlHttp.send(null);
-			this.rec.setText(xmlHttp.responseText+'$');
-			println("complete reading c code '" + filename + "'");
-			if (b_ls) this.printAll(this.rec.text);
-			ui.input_active();
+			//this.xmlHttp.open("GET", filename, false);
+			//this.xmlHttp.send(null);
+			this.rec.filename = filename;
+			this.xmlHttp.open("GET", "lf.asp?filename="+filename, true);
+			this.xmlHttp.send(null);
 		}
 		ui.analysis = function(rec_o, filename) {
 			this.rec = rec_o.clone();
 			this.w_ana.rec = this.rec;
 			this.g_ana.rec = this.rec;
+			this.xmlHttp.open("GET", filename, false);
+			this.xmlHttp.send(null);
+			this.rec.filename = filename;
+			this.rec.setText(this.xmlHttp.responseText+'$');
+			this.w_ana.text = this.rec.text;
 			var et = this.w_ana.analysis(0, "", "code");
 			if (!this.rec.error_ct) 
 				this.g_ana.analysis(et, "");
-			this.rec_o.error_ct += this.rec.error_ct;
+			rec_o.c_data = this.rec.c_data;
+			rec_o.error_ct = this.rec.error_ct;
 			this.rec = rec_o;
+			this.w_ana.text = this.rec.text;
 			this.w_ana.rec = this.rec;
 			this.g_ana.rec = this.rec;
 			return et;
@@ -2873,15 +3266,19 @@
 				println("Compile is paused at " + this.rec.error_ct + " error(s) totally.");
 				ui.input_active(); return;
 			}
-			var insts = this.i_gen.find_main(et);
-			if (insts == null) {
+			var insts = this.i_gen.initialize();
+			insts = insts.concat(this.i_gen.find_main(et));
+			if (this.rec.error_ct > 0) {
+				println("Compile is paused at " + this.rec.error_ct + " error(s) totally.");
 				ui.input_active(); return;
 			}
 			insts = insts.concat(this.i_gen.generate(et, "", insts.length, 0));
 			this.i_gen.determine_pc(insts);
-			if (this.savefile != null) 
-				this.saveinst(savefile, insts);
-			else
+			println("b1");
+			if (this.savefile != null) {
+				println("b2"); alert("b2");
+				this.saveinst(this.savefile, insts);
+			}else
 				this.printinst(insts);
 			ui.input_active();
 		}
@@ -2896,8 +3293,10 @@
 		ui.saveinst = function(filename, insts) {
 			var content = "";
 			var inst = null, ibin;
+			//println("saveinst begin");
 			for (var i = 0 ; i < insts.length ; i++) {
 				inst = insts[i];
+				//println("inst.type="+inst.type);
 				switch (inst.type) {
 					case "ADDIU" :
 						ibin = 0x24000000 | (inst.rs<<21) | (inst.rt<<16) | this.conv_i(inst.imme); break;
@@ -2998,18 +3397,18 @@
 					default :
 						ibin = 0x00000000; break;
 				}
+				println("i="+i+" ibin="+ibin);
 				content += String.fromCharCode((ibin>>24)&255) + 
 						   String.fromCharCode((ibin>>16)&255) +
 						   String.fromCharCode((ibin>>8) &255) +
 						   String.fromCharCode(ibin      &255);
 			}
 			var win = window.open("","","top=10000,left=10000");  
-    		win.document.write(content);  
-   	 		win.document.execCommand("SaveAs","",savefile)  
-    		win.close();  
+    		win.document.write(content);
+   	 		win.document.execCommand("SaveAs", false, filename)  
+    		win.close();
     	}
     	ui.printinst = function(insts) {
-    		//println("printinst begin");
     		var inst = null;
     		var display = null;
     		for (var i = 0 ; i < insts.length ; i++) {
@@ -3028,7 +3427,7 @@
 						display += inst.rs;
 						while (display.length < 12)
 							display += " ";
-						display += parseInt(inst.imme, 16);
+						display += parseInt(inst.imme);
 						break;
 					case "ADDU" : case "SUBU" : case "AND" : case "OR" : case "XOR" : case "NOR" :
 					case "SLLV" : case "SRLV" : case "SRAV" : case "SLT" : case "SLTU" :
@@ -3052,7 +3451,7 @@
 							display += " ";
 						display += inst.rt;
 						break;
-					case "SLL" : case "SRL" : case "SRA" : case "MFC0" : case "MTC0" :
+					case "SLL" : case "SRL" : case "SRA" : 
 						display = inst.type;
 						while (display.length < 6)
 							display += " ";
@@ -3062,7 +3461,16 @@
 						display += inst.rt;
 						while (display.length < 12)
 							display += " ";
-						display += parseInt(inst.imme, 16);
+						display += parseInt(inst.imme);
+						break;
+					case "MFC0" : case "MTC0" :
+						display = inst.type;
+						while (display.length < 6)
+							display += " ";
+						display += inst.rd;
+						while (display.length < 9)
+							display += " ";
+						display += inst.rt;
 						break;
 					case "BGTZ" : case "BLTZ" : case "BGEZ" : case "BLEZ" :
 						display = inst.type;
@@ -3071,13 +3479,13 @@
 						display += inst.rs;
 						while (display.length < 9)
 							display += " ";
-						display += parseInt(inst.imme, 16);
+						display += parseInt(inst.imme);
 						break;
 					case "J" : case "JAL" :
 						display = inst.type;
 						while (display.length < 6)
 							display += " ";
-						display += parseInt(inst.imme, 16);
+						display += parseInt(inst.imme);
 						break;
 					case "JR" :
 						display = inst.type;
@@ -3085,7 +3493,7 @@
 							display += " ";
 						display += inst.rs;
 						break;
-					case "JALR" :
+					case "JALR" : 
 						display = inst.type;
 						while (display.length < 6)
 							display += " ";
@@ -3111,8 +3519,8 @@
 						break;
 				}
 				println(display);
-				if (i%38 == 37) 
-					this.pause();
+				//if (i%38 == 37) 
+				//	this.pause();
 			}
     	}
 		ui.input_paused = function() {
@@ -3125,6 +3533,7 @@
 		ui.pause = function() {
 			pause_active = true;
 			println("Press ANYKEY to continue...");
+			while (pause_active) pause_active = true;
 		}
 		ui.printAll = function(text) {
 			var l_ct = 0;
